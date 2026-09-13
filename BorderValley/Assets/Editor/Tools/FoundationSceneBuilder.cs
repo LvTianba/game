@@ -53,11 +53,14 @@ namespace BorderValley.Editor
             new GameObject("WorldPlaceholder").AddComponent<WorldPlaceholder>();
             EditorSceneManager.SaveScene(world, "Assets/Scenes/World.unity");
 
+            BattleSceneBuilder.BuildScene();
+
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene("Assets/Scenes/Boot.unity", true),
                 new EditorBuildSettingsScene("Assets/Scenes/MainMenu.unity", true),
-                new EditorBuildSettingsScene("Assets/Scenes/World.unity", true)
+                new EditorBuildSettingsScene("Assets/Scenes/World.unity", true),
+                new EditorBuildSettingsScene(BattleSceneBuilder.ScenePath, true)
             };
             AssetDatabase.SaveAssets();
         }
