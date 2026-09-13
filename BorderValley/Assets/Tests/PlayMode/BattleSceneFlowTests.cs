@@ -2,6 +2,8 @@ using System.Collections;
 using System.Linq;
 using System.Text.RegularExpressions;
 using BorderValley.Battle.Domain;
+using BorderValley.Core;
+using BorderValley.Core.BattleFlow;
 using BorderValley.UI.Battle;
 using NUnit.Framework;
 using UnityEngine;
@@ -13,6 +15,56 @@ namespace BorderValley.PlayModeTests
 {
     public sealed class BattleSceneFlowTests
     {
+        [UnityTest]
+        public IEnumerator MainMenu_ToWorld_ToBattle()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+
+            var menuButton = Object.FindFirstObjectByType<Button>();
+            Assert.That(menuButton, Is.Not.Null);
+            menuButton.onClick.Invoke();
+            yield return WaitForScene("World");
+
+            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
+            Assert.That(entry, Is.Not.Null);
+            Assert.That(entry.BattleButton, Is.Not.Null);
+            entry.BattleButton.onClick.Invoke();
+            yield return WaitForScene("Battle");
+
+            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("Battle"));
+            Assert.That(Object.FindFirstObjectByType<BattleSceneController>(), Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator WorldBattleEntry_ConsumesAndDisplaysResultOnce()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            yield return WaitForScene("MainMenu");
+
+            var flow = GameBootstrapper.Context.Get<IBattleFlow>();
+            flow.CompleteBattle(new BattleResult(BattleFlowOutcome.PlayerVictory, 3));
+
+            yield return SceneManager.LoadSceneAsync("World");
+            yield return null;
+
+            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
+            Assert.That(entry, Is.Not.Null);
+            Assert.That(entry.ResultLabel.text, Is.EqualTo("battle.result.player_victory"));
+            Assert.That(
+                entry.BattleButton.GetComponentInChildren<Text>().text,
+                Is.EqualTo("battle.ui.enter_battle"));
+
+            yield return SceneManager.LoadSceneAsync("World");
+            yield return null;
+
+            entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
+            Assert.That(entry, Is.Not.Null);
+            Assert.That(entry.ResultLabel.text, Is.Empty);
+            Assert.That(flow.TryTakeResult(out _), Is.False);
+        }
+
         [UnityTest]
         public IEnumerator BattleScene_RendersCoreScenario()
         {
@@ -190,6 +242,12 @@ namespace BorderValley.PlayModeTests
                 corners.Min(corner => corner.y),
                 corners.Max(corner => corner.x),
                 corners.Max(corner => corner.y));
+        }
+
+        private static IEnumerator WaitForScene(string sceneName)
+        {
+            for (var i = 0; i < 180 && SceneManager.GetActiveScene().name != sceneName; i++)
+                yield return null;
         }
 
         private static bool Overlaps(Rect left, Rect right) =>
