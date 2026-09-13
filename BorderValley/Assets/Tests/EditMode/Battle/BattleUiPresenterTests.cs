@@ -112,6 +112,26 @@ namespace BorderValley.Battle.Tests
         }
 
         [Test]
+        public void EndTurn_WhenSkippedTurnsReturnToSameUnit_ClearsSelectedSkill()
+        {
+            var presenter = Create();
+            var active = presenter.ActiveUnit;
+            presenter.SelectSkill("skill.piercing_shot");
+            foreach (var unit in presenter.Engine.State.Units
+                         .Where(unit => !ReferenceEquals(unit, active))
+                         .ToArray())
+            {
+                StatusSystem.Apply(unit, StatusType.Stunned, 1, 2, "test");
+            }
+
+            var result = presenter.EndTurn();
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(presenter.ActiveUnit, Is.SameAs(active));
+            Assert.That(presenter.SelectedSkillId, Is.Null);
+        }
+
+        [Test]
         public void GetHighlight_SelectedSkillAfterMovement_StillMarksTargetCells()
         {
             var presenter = Create();

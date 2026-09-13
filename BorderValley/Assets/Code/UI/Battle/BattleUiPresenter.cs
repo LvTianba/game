@@ -66,8 +66,13 @@ namespace BorderValley.UI.Battle
         {
             var activeUnitId = ActiveUnit?.Id;
             var result = engine.Execute(command);
-            if (IsFinished || !string.Equals(activeUnitId, ActiveUnit?.Id, StringComparison.Ordinal))
+            var isSuccessfulEndTurn = result.Success && command is EndTurnCommand;
+            if (IsFinished ||
+                isSuccessfulEndTurn ||
+                !string.Equals(activeUnitId, ActiveUnit?.Id, StringComparison.Ordinal))
+            {
                 SelectedSkillId = null;
+            }
 
             Notify();
             return result;
