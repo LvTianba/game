@@ -1,15 +1,31 @@
+using System;
 using System.Collections.Generic;
 
 namespace BorderValley.Battle.Domain
 {
     public static class GridPathfinder
     {
+        /// <summary>
+        /// Finds all cells reachable from <paramref name="start"/> within the movement budget.
+        /// The acting unit may be present in <paramref name="occupied"/>; its own start cell remains reachable.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="map"/> or <paramref name="occupied"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="movement"/> is negative, or <paramref name="start"/> is outside the map.</exception>
+        /// <exception cref="ArgumentException"><paramref name="start"/> is an obstacle.</exception>
         public static IReadOnlyDictionary<GridPosition, int> FindReachable(
             BattleMap map,
             GridPosition start,
             int movement,
             ISet<GridPosition> occupied)
         {
+            if (map == null) throw new ArgumentNullException(nameof(map));
+            if (occupied == null) throw new ArgumentNullException(nameof(occupied));
+            if (movement < 0) throw new ArgumentOutOfRangeException(nameof(movement));
+            if (!map.InBounds(start))
+                throw new ArgumentOutOfRangeException(nameof(start), start, "Start position must be inside the map.");
+            if (map.GetTerrain(start) == TerrainType.Obstacle)
+                throw new ArgumentException("Start position cannot be an obstacle.", nameof(start));
+
             var costs = new Dictionary<GridPosition, int> { [start] = 0 };
             var queue = new Queue<GridPosition>();
             queue.Enqueue(start);

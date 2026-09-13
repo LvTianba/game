@@ -102,6 +102,7 @@ BorderValley/Assets/Tests/EditMode/Battle/
 - [ ] **Step 1: 写失败测试**
 
 ```csharp
+using System;
 using System.Collections.Generic;
 using BorderValley.Battle.Domain;
 using NUnit.Framework;
@@ -153,6 +154,63 @@ namespace BorderValley.Battle.Tests
 
             Assert.That(reachable.ContainsKey(new GridPosition(1, 0)), Is.False);
             Assert.That(reachable.ContainsKey(new GridPosition(2, 0)), Is.False);
+        }
+
+        [Test]
+        public void FindReachable_NullMapThrows()
+        {
+            Assert.Throws<ArgumentNullException>(() => GridPathfinder.FindReachable(
+                null, new GridPosition(0, 0), 1, new HashSet<GridPosition>()));
+        }
+
+        [Test]
+        public void FindReachable_NullOccupiedThrows()
+        {
+            var map = BattleMap.CreatePlain(1, 1);
+
+            Assert.Throws<ArgumentNullException>(() => GridPathfinder.FindReachable(
+                map, new GridPosition(0, 0), 1, null));
+        }
+
+        [Test]
+        public void FindReachable_NegativeMovementThrows()
+        {
+            var map = BattleMap.CreatePlain(1, 1);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => GridPathfinder.FindReachable(
+                map, new GridPosition(0, 0), -1, new HashSet<GridPosition>()));
+        }
+
+        [Test]
+        public void FindReachable_OutOfBoundsStartThrows()
+        {
+            var map = BattleMap.CreatePlain(1, 1);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => GridPathfinder.FindReachable(
+                map, new GridPosition(1, 0), 1, new HashSet<GridPosition>()));
+        }
+
+        [Test]
+        public void FindReachable_ObstacleStartThrows()
+        {
+            var map = new BattleMap(1, 1, new[] { TerrainType.Obstacle });
+
+            Assert.Throws<ArgumentException>(() => GridPathfinder.FindReachable(
+                map, new GridPosition(0, 0), 1, new HashSet<GridPosition>()));
+        }
+
+        [Test]
+        public void FindReachable_AllowsOccupiedStartCell()
+        {
+            var map = BattleMap.CreatePlain(2, 1);
+            var start = new GridPosition(0, 0);
+            var occupied = new HashSet<GridPosition> { start };
+
+            var reachable = GridPathfinder.FindReachable(map, start, 1, occupied);
+
+            Assert.That(reachable.ContainsKey(start), Is.True);
+            Assert.That(reachable[start], Is.EqualTo(0));
+            Assert.That(reachable.ContainsKey(new GridPosition(1, 0)), Is.True);
         }
     }
 }
@@ -270,18 +328,34 @@ namespace BorderValley.Battle.Domain
 `GridPathfinder.cs`：
 
 ```csharp
+using System;
 using System.Collections.Generic;
 
 namespace BorderValley.Battle.Domain
 {
     public static class GridPathfinder
     {
+        /// <summary>
+        /// Finds all cells reachable from <paramref name="start"/> within the movement budget.
+        /// The acting unit may be present in <paramref name="occupied"/>; its own start cell remains reachable.
+        /// </summary>
+        /// <exception cref="ArgumentNullException"><paramref name="map"/> or <paramref name="occupied"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="movement"/> is negative, or <paramref name="start"/> is outside the map.</exception>
+        /// <exception cref="ArgumentException"><paramref name="start"/> is an obstacle.</exception>
         public static IReadOnlyDictionary<GridPosition, int> FindReachable(
             BattleMap map,
             GridPosition start,
             int movement,
             ISet<GridPosition> occupied)
         {
+            if (map == null) throw new ArgumentNullException(nameof(map));
+            if (occupied == null) throw new ArgumentNullException(nameof(occupied));
+            if (movement < 0) throw new ArgumentOutOfRangeException(nameof(movement));
+            if (!map.InBounds(start))
+                throw new ArgumentOutOfRangeException(nameof(start), start, "Start position must be inside the map.");
+            if (map.GetTerrain(start) == TerrainType.Obstacle)
+                throw new ArgumentException("Start position cannot be an obstacle.", nameof(start));
+
             var costs = new Dictionary<GridPosition, int> { [start] = 0 };
             var queue = new Queue<GridPosition>();
             queue.Enqueue(start);
