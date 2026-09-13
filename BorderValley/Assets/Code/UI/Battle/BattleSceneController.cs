@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using BorderValley.Battle.Domain;
 using BorderValley.Core;
@@ -19,11 +20,20 @@ namespace BorderValley.UI.Battle
         private BattleHudView hudView;
         private string returnScene = string.Empty;
         private Coroutine enemyTurnRoutine;
+        private bool enemyTurnLoopActive;
         private bool continueHandled;
 
         public int RenderedCellCount => gridView == null ? 0 : gridView.CellCount;
         public int RenderedUnitCount => gridView == null ? 0 : gridView.UnitCount;
         public Button EndTurnButton => hudView == null ? null : hudView.EndTurnButton;
+        public int EnemyTurnLoopCount { get; private set; }
+        public int EnemyActionCount { get; private set; }
+        public bool IsEnemyTurnLoopActive => enemyTurnLoopActive;
+        public Func<BattleEngine, string, BattleCommand> EnemyCommandSelector { get; set; }
+        public string LastEnemyErrorKey { get; private set; } = string.Empty;
+        public string ActiveUnitId => presenter == null || presenter.ActiveUnit == null
+            ? string.Empty
+            : presenter.ActiveUnit.Id;
 
         private void Start()
         {
@@ -123,7 +133,7 @@ namespace BorderValley.UI.Battle
 
         private void TryStartEnemyTurns()
         {
-            if (enemyTurnRoutine != null ||
+            if (enemyTurnLoopActive ||
                 !isActiveAndEnabled ||
                 presenter == null ||
                 presenter.IsFinished ||
@@ -133,26 +143,71 @@ namespace BorderValley.UI.Battle
                 return;
             }
 
+            enemyTurnLoopActive = true;
             enemyTurnRoutine = StartCoroutine(RunEnemyTurns());
         }
 
         private IEnumerator RunEnemyTurns()
         {
-            while (!presenter.IsFinished &&
-                   presenter.ActiveUnit != null &&
-                   presenter.ActiveUnit.Team == Team.Enemy)
+            EnemyTurnLoopCount++;
+            try
+            {
+                yield return null;
+
+                while (!presenter.IsFinished &&
+                       presenter.ActiveUnit != null &&
+                       presenter.ActiveUnit.Team == Team.Enemy)
+                {
+                    EnemyActionCount++;
+                    if (!TryExecuteEnemyAction())
+                        yield break;
+
+                    yield return new WaitForSeconds(0.35f);
+                }
+            }
+            finally
+            {
+                enemyTurnLoopActive = false;
+                enemyTurnRoutine = null;
+            }
+        }
+
+        private bool TryExecuteEnemyAction()
+        {
+            try
             {
                 var actor = presenter.ActiveUnit;
-                var command = BattleAi.ChooseCommand(
-                    presenter.Engine,
-                    actor.Id,
-                    presenter.Engine.GetSkillsForUnitById(actor.Id));
-                presenter.Execute(command);
-                yield return new WaitForSeconds(0.35f);
-            }
+                var command = EnemyCommandSelector == null
+                    ? BattleAi.ChooseCommand(
+                        presenter.Engine,
+                        actor.Id,
+                        presenter.Engine.GetSkillsForUnitById(actor.Id))
+                    : EnemyCommandSelector(presenter.Engine, actor.Id);
 
-            enemyTurnRoutine = null;
+                var result = presenter.Execute(command);
+                if (result.Success)
+                    return true;
+
+                LastEnemyErrorKey = BattleTextKeys.AiCommandFailed;
+                Debug.LogError(Key(LastEnemyErrorKey) + ": " + result.ErrorCode);
+
+                var fallback = presenter.Execute(new EndTurnCommand(actor.Id));
+                if (fallback.Success)
+                    return true;
+
+                LastEnemyErrorKey = BattleTextKeys.AiFallbackFailed;
+                Debug.LogError(Key(LastEnemyErrorKey) + ": " + fallback.ErrorCode);
+                return false;
+            }
+            catch (Exception exception)
+            {
+                LastEnemyErrorKey = BattleTextKeys.AiException;
+                Debug.LogError(Key(LastEnemyErrorKey) + ": " + exception.GetType().Name);
+                return false;
+            }
         }
+
+        private static string Key(string localizationKey) => localizationKey;
 
         private static void ConfigureCanvas(Canvas canvas, CanvasScaler scaler)
         {

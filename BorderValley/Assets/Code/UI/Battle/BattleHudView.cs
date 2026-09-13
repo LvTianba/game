@@ -61,33 +61,36 @@ namespace BorderValley.UI.Battle
 
             var state = presenter.Engine.State;
             var activeUnit = presenter.Engine.ActiveUnit;
-            roundText.text = Key("battle.hud.round") + ": " + state.Round;
+            roundText.text = Key(BattleTextKeys.Round) + ": " + state.Round;
 
             if (activeUnit == null)
             {
-                activeUnitText.text = Key("battle.hud.active_unit.none");
-                unitStatsText.text = Key("battle.hud.unit.none");
-                statusText.text = Key("battle.hud.status_none");
+                activeUnitText.text = Key(BattleTextKeys.ActiveUnitNone);
+                unitStatsText.text = Key(BattleTextKeys.UnitNone);
+                statusText.text = Key(BattleTextKeys.StatusNone);
             }
             else
             {
-                activeUnitText.text = Key("battle.hud.active_unit") + ": " + activeUnit.DefinitionId;
+                activeUnitText.text = Key(BattleTextKeys.ActiveUnit) + ": " +
+                                      Key(BattleTextKeys.Unit(activeUnit.DefinitionId));
                 unitStatsText.text =
-                    Key("battle.hud.health") + ": " + activeUnit.Health + "/" + activeUnit.Stats.MaxHealth + "\n" +
-                    Key("battle.hud.mana") + ": " + activeUnit.Mana + "/" + activeUnit.Stats.MaxMana + "\n" +
-                    Key("battle.hud.moved") + ": " + activeUnit.HasMoved + "  " +
-                    Key("battle.hud.acted") + ": " + activeUnit.HasActed;
+                    Key(BattleTextKeys.Health) + ": " + activeUnit.Health + "/" + activeUnit.Stats.MaxHealth + "\n" +
+                    Key(BattleTextKeys.Mana) + ": " + activeUnit.Mana + "/" + activeUnit.Stats.MaxMana + "\n" +
+                    Key(BattleTextKeys.Moved) + ": " + Key(BattleTextKeys.Flag(activeUnit.HasMoved)) + "  " +
+                    Key(BattleTextKeys.Acted) + ": " + Key(BattleTextKeys.Flag(activeUnit.HasActed));
                 statusText.text = activeUnit.Statuses.Count == 0
-                    ? Key("battle.hud.status_none")
-                    : Key("battle.hud.status") + ": " + string.Join(
+                    ? Key(BattleTextKeys.StatusNone)
+                    : Key(BattleTextKeys.StatusLabel) + ": " + string.Join(
                         ", ",
                         activeUnit.Statuses.Select(status =>
-                            status.Type + "(" + status.RemainingTurns + ")"));
+                            Key(BattleTextKeys.StatusKey(status.Type)) +
+                            "(" + status.RemainingTurns + ")"));
             }
 
-            actionOrderText.text = Key("battle.hud.turn_order") + ": " + string.Join(
+            actionOrderText.text = Key(BattleTextKeys.TurnOrder) + ": " + string.Join(
                 "  ",
-                TurnOrder.Build(state.LivingUnits).Select(unit => unit.DefinitionId));
+                TurnOrder.Build(state.LivingUnits)
+                    .Select(unit => Key(BattleTextKeys.Unit(unit.DefinitionId))));
 
             RebuildSkillButtonsIfNeeded(presenter);
             UpdateSkillButtons(presenter);
@@ -97,8 +100,8 @@ namespace BorderValley.UI.Battle
             if (presenter.IsFinished)
             {
                 resultText.text = presenter.Outcome == BattleOutcome.PlayerVictory
-                    ? Key("battle.result.player_victory")
-                    : Key("battle.result.enemy_victory");
+                    ? Key(BattleTextKeys.PlayerVictory)
+                    : Key(BattleTextKeys.EnemyVictory);
             }
         }
 
@@ -151,11 +154,11 @@ namespace BorderValley.UI.Battle
             var statsPanel = CreatePanel(
                 transform,
                 "Stats",
-                new Vector2(0f, 0f),
-                new Vector2(0f, 0f),
-                new Vector2(0f, 0f),
-                new Vector2(35f, 25f),
-                new Vector2(980f, 275f),
+                new Vector2(0.72f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 310f),
+                new Vector2(-20f, 275f),
                 panelColor);
             unitStatsText = CreateText(
                 statsPanel.transform,
@@ -181,11 +184,11 @@ namespace BorderValley.UI.Battle
             var skillsPanel = CreatePanel(
                 transform,
                 "Skills",
+                new Vector2(0.72f, 0f),
                 new Vector2(1f, 0f),
-                new Vector2(1f, 0f),
-                new Vector2(1f, 0f),
-                new Vector2(-35f, 25f),
-                new Vector2(520f, 275f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 25f),
+                new Vector2(-20f, 275f),
                 panelColor);
             skillsTitleText = CreateText(
                 skillsPanel.transform,
@@ -212,7 +215,7 @@ namespace BorderValley.UI.Battle
             var skillLayout = skillsRootObject.GetComponent<GridLayoutGroup>();
             skillLayout.padding = new RectOffset(5, 5, 5, 5);
             skillLayout.spacing = new Vector2(8f, 8f);
-            skillLayout.cellSize = new Vector2(235f, 48f);
+            skillLayout.cellSize = new Vector2(210f, 48f);
             skillLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             skillLayout.constraintCount = 2;
             skillLayout.childAlignment = TextAnchor.UpperCenter;
