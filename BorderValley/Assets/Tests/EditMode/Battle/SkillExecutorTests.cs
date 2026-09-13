@@ -557,6 +557,90 @@ namespace BorderValley.Battle.Tests
             Assert.That(state.GetUnit("e2").Statuses.Any(status => status.Type == StatusType.Slowed), Is.True);
             Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "p2", "e1", "e2" }));
         }
+        [Test]
+        public void Execute_GroundZeroRadiusDamageOnAllyCell_DoesNotDamageAlly()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("p2", Team.Player, 1));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var ally = state.GetUnit("p2");
+            var skill = Skill("burst", SkillTargeting.Ground, 2, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, new GridPosition(1, 0), RandomSourceFactory.FromSeed("burst"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(ally.Health, Is.EqualTo(20));
+            Assert.That(result.DamageDealt, Is.Zero);
+            Assert.That(result.AffectedUnits, Is.Empty);
+        }
+
+        [Test]
+        public void Execute_GroundZeroRadiusDamageOnEnemyCell_DamagesEnemy()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var enemy = state.GetUnit("e1");
+            var skill = Skill("burst", SkillTargeting.Ground, 2, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, new GridPosition(2, 0), RandomSourceFactory.FromSeed("burst"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(enemy.Health, Is.EqualTo(13));
+            Assert.That(result.DamageDealt, Is.EqualTo(7));
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "e1" }));
+        }
+
+        [Test]
+        public void Execute_GroundZeroRadiusHealAndShieldOnEnemyCell_IsIgnored()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            state.GetUnit("e1").ApplyRawDamage(10);
+            var actor = state.GetUnit("p1");
+            var enemy = state.GetUnit("e1");
+            var skill = Skill("blessing", SkillTargeting.Ground, 1, 0,
+                new SkillEffectDefinition(SkillEffectKind.Heal, 0f, default, 5, 0),
+                new SkillEffectDefinition(
+                    SkillEffectKind.ApplyStatus, 0f, StatusType.Shielded, 3, 2));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, new GridPosition(1, 0), RandomSourceFactory.FromSeed("blessing"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(enemy.Health, Is.EqualTo(10));
+            Assert.That(StatusSystem.GetShield(enemy), Is.Zero);
+            Assert.That(result.HealingDone, Is.Zero);
+            Assert.That(result.AffectedUnits, Is.Empty);
+        }
+
+        [Test]
+        public void Execute_GroundZeroRadiusShieldOnAllyCell_AppliesShield()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("p2", Team.Player, 1));
+            var actor = state.GetUnit("p1");
+            var ally = state.GetUnit("p2");
+            var skill = Skill("blessing", SkillTargeting.Ground, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.ApplyStatus, 0f, StatusType.Shielded, 3, 2));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, new GridPosition(1, 0), RandomSourceFactory.FromSeed("blessing"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(StatusSystem.GetShield(ally), Is.EqualTo(3));
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "p2" }));
+        }
         private static BattleState StateWithThreeUnits()
         {
             var state = new BattleState(BattleMap.CreatePlain(4, 1));

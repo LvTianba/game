@@ -107,10 +107,16 @@ namespace BorderValley.Battle.Domain
             if (skill.Radius == 0)
             {
                 if (unitTarget != null)
-                    return new[] { unitTarget };
+                {
+                    return MatchesEffectTarget(effect, actor.Team, unitTarget)
+                        ? new[] { unitTarget }
+                        : Array.Empty<BattleUnit>();
+                }
 
                 return state.LivingUnits
-                    .Where(unit => unit.Position == anchor)
+                    .Where(unit =>
+                        unit.Position == anchor &&
+                        MatchesEffectTarget(effect, actor.Team, unit))
                     .ToArray();
             }
 
@@ -136,7 +142,7 @@ namespace BorderValley.Battle.Domain
                     unit.Team == actorTeam,
                 SkillEffectKind.ApplyStatus =>
                     unit.Team != actorTeam,
-                _ => false
+                _ => throw new ArgumentOutOfRangeException(nameof(effect.Kind))
             };
         }
 
