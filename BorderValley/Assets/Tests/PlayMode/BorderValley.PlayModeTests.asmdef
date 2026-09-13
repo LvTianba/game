@@ -1,0 +1,6 @@
+{
+  "name": "BorderValley.PlayModeTests",
+  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative", "BorderValley.World", "BorderValley.UI", "UnityEngine.UI"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
