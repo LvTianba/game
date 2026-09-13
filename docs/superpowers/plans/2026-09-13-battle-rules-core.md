@@ -115,8 +115,8 @@ namespace BorderValley.Battle.Tests
         {
             var map = new BattleMap(3, 3, new[]
             {
-                TerrainType.Plain, TerrainType.Plain, TerrainType.Plain,
                 TerrainType.Plain, TerrainType.Obstacle, TerrainType.Plain,
+                TerrainType.Plain, TerrainType.Plain, TerrainType.Plain,
                 TerrainType.Plain, TerrainType.Plain, TerrainType.Plain
             });
 
