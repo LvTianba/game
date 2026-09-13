@@ -174,9 +174,9 @@ namespace BorderValley.UI.Battle
 
         private bool TryExecuteEnemyAction()
         {
+            var actor = presenter.ActiveUnit;
             try
             {
-                var actor = presenter.ActiveUnit;
                 var command = EnemyCommandSelector == null
                     ? BattleAi.ChooseCommand(
                         presenter.Engine,
@@ -191,20 +191,32 @@ namespace BorderValley.UI.Battle
                 LastEnemyErrorKey = BattleTextKeys.AiCommandFailed;
                 Debug.LogError(Key(LastEnemyErrorKey) + ": " + result.ErrorCode);
 
-                var fallback = presenter.Execute(new EndTurnCommand(actor.Id));
-                if (fallback.Success)
-                    return true;
-
-                LastEnemyErrorKey = BattleTextKeys.AiFallbackFailed;
-                Debug.LogError(Key(LastEnemyErrorKey) + ": " + fallback.ErrorCode);
-                return false;
+                return TryEndTurnFallback(actor);
             }
             catch (Exception exception)
             {
                 LastEnemyErrorKey = BattleTextKeys.AiException;
                 Debug.LogError(Key(LastEnemyErrorKey) + ": " + exception.GetType().Name);
+                return TryEndTurnFallback(actor);
+            }
+        }
+
+        private bool TryEndTurnFallback(BattleUnit actor)
+        {
+            if (actor == null)
+            {
+                LastEnemyErrorKey = BattleTextKeys.AiFallbackFailed;
+                Debug.LogError(Key(LastEnemyErrorKey) + ": no_active_unit");
                 return false;
             }
+
+            var fallback = presenter.Execute(new EndTurnCommand(actor.Id));
+            if (fallback.Success)
+                return true;
+
+            LastEnemyErrorKey = BattleTextKeys.AiFallbackFailed;
+            Debug.LogError(Key(LastEnemyErrorKey) + ": " + fallback.ErrorCode);
+            return false;
         }
 
         private static string Key(string localizationKey) => localizationKey;

@@ -219,15 +219,19 @@ namespace BorderValley.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator BattleScene_EnemyCommandFailure_FallsBackAndClearsLoop()
+        public IEnumerator BattleScene_EnemyCommandFailure_FallsBackAndAdvancesTurn()
         {
             yield return SceneManager.LoadSceneAsync("Battle");
             yield return null;
 
             var controller = Object.FindAnyObjectByType<BattleSceneController>();
             Assert.That(controller, Is.Not.Null);
+            string enemyUnitId = null;
             controller.EnemyCommandSelector = (_, unitId) =>
-                new MoveCommand(unitId, new GridPosition(-1, -1));
+            {
+                enemyUnitId = unitId;
+                return new MoveCommand(unitId, new GridPosition(-1, -1));
+            };
 
             LogAssert.Expect(LogType.Error, new Regex("^battle.ui.error.ai_command_failed:"));
             controller.EndTurnButton.onClick.Invoke();
@@ -239,19 +243,25 @@ namespace BorderValley.PlayModeTests
             Assert.That(controller.EnemyActionCount, Is.EqualTo(1));
             Assert.That(controller.IsEnemyTurnLoopActive, Is.False);
             Assert.That(controller.LastEnemyErrorKey, Is.EqualTo(BattleTextKeys.AiCommandFailed));
+            Assert.That(enemyUnitId, Does.StartWith("enemy."));
             Assert.That(controller.ActiveUnitId, Does.StartWith("player."));
+            Assert.That(controller.ActiveUnitId, Is.Not.EqualTo(enemyUnitId));
         }
 
         [UnityTest]
-        public IEnumerator BattleScene_EnemyCommandException_ClearsLoopAndLogsKey()
+        public IEnumerator BattleScene_EnemyCommandException_FallsBackAndAdvancesTurn()
         {
             yield return SceneManager.LoadSceneAsync("Battle");
             yield return null;
 
             var controller = Object.FindAnyObjectByType<BattleSceneController>();
             Assert.That(controller, Is.Not.Null);
-            controller.EnemyCommandSelector = (_, _) =>
+            string enemyUnitId = null;
+            controller.EnemyCommandSelector = (_, unitId) =>
+            {
+                enemyUnitId = unitId;
                 throw new System.InvalidOperationException("selector failed");
+            };
 
             LogAssert.Expect(LogType.Error, new Regex("^battle.ui.error.ai_exception:"));
             controller.EndTurnButton.onClick.Invoke();
@@ -263,6 +273,9 @@ namespace BorderValley.PlayModeTests
             Assert.That(controller.EnemyActionCount, Is.EqualTo(1));
             Assert.That(controller.IsEnemyTurnLoopActive, Is.False);
             Assert.That(controller.LastEnemyErrorKey, Is.EqualTo(BattleTextKeys.AiException));
+            Assert.That(enemyUnitId, Does.StartWith("enemy."));
+            Assert.That(controller.ActiveUnitId, Does.StartWith("player."));
+            Assert.That(controller.ActiveUnitId, Is.Not.EqualTo(enemyUnitId));
         }
 
         private sealed class RecordingSceneLoader : ISceneLoader
