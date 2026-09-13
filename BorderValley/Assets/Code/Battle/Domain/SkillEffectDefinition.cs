@@ -9,7 +9,8 @@ namespace BorderValley.Battle.Domain
             float powerMultiplier,
             StatusType statusType,
             int magnitude,
-            int duration)
+            int duration,
+            DamageType damageType = DamageType.Physical)
         {
             if (float.IsNaN(powerMultiplier) || float.IsInfinity(powerMultiplier))
                 throw new ArgumentOutOfRangeException(nameof(powerMultiplier));
@@ -19,6 +20,7 @@ namespace BorderValley.Battle.Domain
             StatusType = statusType;
             Magnitude = Math.Max(0, magnitude);
             Duration = Math.Max(0, duration);
+            DamageType = damageType;
         }
 
         public SkillEffectKind Kind { get; }
@@ -26,5 +28,6 @@ namespace BorderValley.Battle.Domain
         public StatusType StatusType { get; }
         public int Magnitude { get; }
         public int Duration { get; }
+        public DamageType DamageType { get; }
     }
 }

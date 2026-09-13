@@ -284,6 +284,279 @@ namespace BorderValley.Battle.Tests
             Assert.That(actor.Cooldowns, Is.Empty);
         }
 
+        [Test]
+        public void GetValidGroundTargets_EmptyCellsWithinRange_AreValid()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            var actor = state.GetUnit("p1");
+            var skill = SkillWithRadius("quake", SkillTargeting.Ground, 2, 0, 0);
+
+            var targets = SkillTargetValidator.GetValidGroundTargets(state, actor, skill).ToArray();
+
+            Assert.That(targets.Contains(new GridPosition(1, 0)), Is.True);
+            Assert.That(targets.Contains(new GridPosition(2, 0)), Is.True);
+            Assert.That(targets.Contains(new GridPosition(3, 0)), Is.False);
+        }
+
+        [Test]
+        public void GetValidGroundTargets_BlocksObstacleAndLineOfSight()
+        {
+            var map = new BattleMap(4, 1, new[]
+            {
+                TerrainType.Plain, TerrainType.Obstacle, TerrainType.Plain, TerrainType.Plain
+            });
+            var state = new BattleState(map);
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            var actor = state.GetUnit("p1");
+            var skill = SkillWithRadius("quake", SkillTargeting.Ground, 3, 0, 0);
+
+            var targets = SkillTargetValidator.GetValidGroundTargets(state, actor, skill).ToArray();
+
+            Assert.That(targets.Contains(new GridPosition(1, 0)), Is.False);
+            Assert.That(targets.Contains(new GridPosition(2, 0)), Is.False);
+        }
+
+        [Test]
+        public void GetValidTargets_ObstacleBetweenRangedTargets_IsBlocked()
+        {
+            var map = new BattleMap(3, 1, new[]
+            {
+                TerrainType.Plain, TerrainType.Obstacle, TerrainType.Plain
+            });
+            var state = new BattleState(map);
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var skill = Skill("blast", SkillTargeting.Enemy, 2, 0);
+
+            var targets = SkillTargetValidator.GetValidTargets(state, actor, skill).ToArray();
+
+            Assert.That(targets, Is.Empty);
+        }
+
+        [Test]
+        public void GetValidTargets_BushBetweenRangedTargets_IsBlocked()
+        {
+            var map = new BattleMap(3, 1, new[]
+            {
+                TerrainType.Plain, TerrainType.Bush, TerrainType.Plain
+            });
+            var state = new BattleState(map);
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var skill = Skill("blast", SkillTargeting.Enemy, 2, 0);
+
+            var targets = SkillTargetValidator.GetValidTargets(state, actor, skill).ToArray();
+
+            Assert.That(targets, Is.Empty);
+        }
+
+        [Test]
+        public void GetValidTargets_ClearRangedTarget_IsValid()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var skill = Skill("blast", SkillTargeting.Enemy, 2, 0);
+
+            var targets = SkillTargetValidator.GetValidTargets(state, actor, skill).ToArray();
+
+            Assert.That(targets.Select(unit => unit.Id), Is.EqualTo(new[] { "e1" }));
+        }
+
+        [Test]
+        public void GetValidTargets_AdjacentTarget_IgnoresLineOfSight()
+        {
+            var map = new BattleMap(3, 1, new[]
+            {
+                TerrainType.Plain, TerrainType.Plain, TerrainType.Obstacle
+            });
+            var state = new BattleState(map);
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            var actor = state.GetUnit("p1");
+            var skill = Skill("blast", SkillTargeting.Enemy, 2, 0);
+
+            var targets = SkillTargetValidator.GetValidTargets(state, actor, skill).ToArray();
+
+            Assert.That(targets.Select(unit => unit.Id), Is.EqualTo(new[] { "e1" }));
+        }
+
+        [Test]
+        public void Execute_GroundSkillOnEmptyCell_Succeeds()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            var actor = state.GetUnit("p1");
+            var skill = SkillWithRadius("quake", SkillTargeting.Ground, 3, 0, 2,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, new GridPosition(3, 0), RandomSourceFactory.FromSeed("quake"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(actor.Mana, Is.EqualTo(8));
+            Assert.That(actor.HasActed, Is.True);
+            Assert.That(result.DamageDealt, Is.Zero);
+            Assert.That(result.AffectedUnits, Is.Empty);
+        }
+
+        [Test]
+        public void Execute_DamageArea_HitsOnlyEnemiesWithinRadius()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(5, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("p2", Team.Player, 1));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            state.AddUnit(Unit("e2", Team.Enemy, 3));
+            state.AddUnit(Unit("e3", Team.Enemy, 4));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = SkillWithRadius("fireball", SkillTargeting.Enemy, 4, 1, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("fireball"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(state.GetUnit("p2").Health, Is.EqualTo(20));
+            Assert.That(state.GetUnit("e1").Health, Is.EqualTo(13));
+            Assert.That(state.GetUnit("e2").Health, Is.EqualTo(13));
+            Assert.That(state.GetUnit("e3").Health, Is.EqualTo(20));
+            Assert.That(result.DamageDealt, Is.EqualTo(14));
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "e1", "e2" }));
+        }
+
+        [Test]
+        public void Execute_UnitTargetWithZeroRadius_HitsOnlyAnchorUnit()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            state.AddUnit(Unit("e2", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("bolt", SkillTargeting.Enemy, 3, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("bolt"));
+
+            Assert.That(state.GetUnit("e1").Health, Is.EqualTo(13));
+            Assert.That(state.GetUnit("e2").Health, Is.EqualTo(20));
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "e1" }));
+        }
+
+        [Test]
+        public void Execute_HealArea_IncludesActorAndAlliesInRadius()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(5, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("p2", Team.Player, 1));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            state.AddUnit(Unit("p3", Team.Player, 3));
+            state.GetUnit("p1").ApplyRawDamage(10);
+            state.GetUnit("p2").ApplyRawDamage(10);
+            state.GetUnit("p3").ApplyRawDamage(10);
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("p2");
+            var skill = SkillWithRadius("heal", SkillTargeting.Ally, 3, 1, 0,
+                new SkillEffectDefinition(SkillEffectKind.Heal, 0f, default, 5, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("heal"));
+
+            Assert.That(state.GetUnit("p1").Health, Is.EqualTo(15));
+            Assert.That(state.GetUnit("p2").Health, Is.EqualTo(15));
+            Assert.That(state.GetUnit("p3").Health, Is.EqualTo(10));
+            Assert.That(state.GetUnit("e1").Health, Is.EqualTo(20));
+            Assert.That(result.HealingDone, Is.EqualTo(10));
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "p1", "p2" }));
+        }
+
+        [Test]
+        public void Execute_PhysicalDamage_UsesArmor()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 10, 0, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 1, 8, 2));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("strike", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("strike"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(target.Health, Is.EqualTo(18));
+            Assert.That(result.DamageDealt, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Execute_MagicalDamage_UsesResistance()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 10, 0, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 1, 8, 2));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("magic_bolt", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.Damage, 1f, default, 0, 0, DamageType.Magical));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("magic_bolt"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(target.Health, Is.EqualTo(12));
+            Assert.That(result.DamageDealt, Is.EqualTo(8));
+        }
+
+        [Test]
+        public void Execute_PushArea_MovesMultipleEnemiesDeterministically()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 4));
+            state.AddUnit(UnitAt("p1", Team.Player, 1, 1));
+            state.AddUnit(UnitAt("e1", Team.Enemy, 2, 1));
+            state.AddUnit(UnitAt("e2", Team.Enemy, 1, 2));
+            var actor = state.GetUnit("p1");
+            var skill = SkillWithRadius("wind", SkillTargeting.Self, 0, 1, 0,
+                new SkillEffectDefinition(SkillEffectKind.Push, 0f, default, 1, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, actor, RandomSourceFactory.FromSeed("wind"));
+
+            Assert.That(state.GetUnit("e1").Position, Is.EqualTo(new GridPosition(3, 1)));
+            Assert.That(state.GetUnit("e2").Position, Is.EqualTo(new GridPosition(1, 3)));
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "e1", "e2" }));
+        }
+        [Test]
+        public void Execute_StatusArea_UsesShieldedForAlliesAndOtherStatusesForEnemies()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(5, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("p2", Team.Player, 1));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            state.AddUnit(Unit("e2", Team.Enemy, 3));
+            var actor = state.GetUnit("p1");
+            var skill = SkillWithRadius("ward", SkillTargeting.Ground, 4, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.ApplyStatus, 0f, StatusType.Shielded, 3, 2),
+                new SkillEffectDefinition(
+                    SkillEffectKind.ApplyStatus, 0f, StatusType.Slowed, 2, 2));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, new GridPosition(2, 0), RandomSourceFactory.FromSeed("ward"));
+
+            Assert.That(StatusSystem.GetShield(state.GetUnit("p2")), Is.EqualTo(3));
+            Assert.That(state.GetUnit("e1").Statuses.Any(status => status.Type == StatusType.Slowed), Is.True);
+            Assert.That(state.GetUnit("e2").Statuses.Any(status => status.Type == StatusType.Slowed), Is.True);
+            Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "p2", "e1", "e2" }));
+        }
         private static BattleState StateWithThreeUnits()
         {
             var state = new BattleState(BattleMap.CreatePlain(4, 1));
@@ -294,8 +567,21 @@ namespace BorderValley.Battle.Tests
         }
 
         private static BattleUnit Unit(string id, Team team, int x) =>
+            Unit(id, team, x, 8, 1, 0);
+
+        private static BattleUnit Unit(
+            string id,
+            Team team,
+            int x,
+            int power,
+            int armor,
+            int resistance) =>
             new BattleUnit(id, "test.unit", team,
-                new UnitStats(20, 10, 8, 1, 5, 0f, 0), new GridPosition(x, 0));
+                new UnitStats(20, 10, power, armor, 5, 0f, resistance), new GridPosition(x, 0));
+
+        private static BattleUnit UnitAt(string id, Team team, int x, int y) =>
+            new BattleUnit(id, "test.unit", team,
+                new UnitStats(20, 10, 8, 1, 5, 0f, 0), new GridPosition(x, y));
 
         private static SkillDefinition Skill(
             string id,
@@ -305,6 +591,14 @@ namespace BorderValley.Battle.Tests
             params SkillEffectDefinition[] effects) =>
             new SkillDefinition(id, "skill." + id, targeting, range, 0, mana, 0, effects);
 
+        private static SkillDefinition SkillWithRadius(
+            string id,
+            SkillTargeting targeting,
+            int range,
+            int radius,
+            int mana,
+            params SkillEffectDefinition[] effects) =>
+            new SkillDefinition(id, "skill." + id, targeting, range, radius, mana, 0, effects);
         private static SkillDefinition SkillWithCooldown(
             string id,
             SkillTargeting targeting,
