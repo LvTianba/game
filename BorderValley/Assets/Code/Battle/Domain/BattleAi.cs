@@ -121,6 +121,46 @@ namespace BorderValley.Battle.Domain
                 var skill = pair.Value;
                 if (!CanUseSkillNow(actor, skill)) continue;
 
+                if (skill.Targeting == SkillTargeting.Ground)
+                {
+                    var validAnchors = SkillTargetingRules
+                        .GetValidGroundTargets(state, actor.Position, skill)
+                        .OrderBy(position => position.X)
+                        .ThenBy(position => position.Y);
+
+                    foreach (var anchorPosition in validAnchors)
+                    {
+                        if (SkillTargetingRules.ViolatesActiveTaunt(
+                                state,
+                                actor,
+                                skill,
+                                anchorPosition,
+                                null))
+                        {
+                            continue;
+                        }
+
+                        var evaluation = EvaluateSkill(
+                            state,
+                            actor,
+                            skill,
+                            actor.Position,
+                            anchorPosition,
+                            null);
+                        if (!evaluation.HasEffect) continue;
+
+                        candidates.Add(new AiCandidate(
+                            new UseSkillCommand(actor.Id, skill.Id, anchorPosition),
+                            evaluation.Score,
+                            SkillCommandRank,
+                            skill.Id,
+                            string.Empty,
+                            anchorPosition));
+                    }
+
+                    continue;
+                }
+
                 var validTargets = SkillTargetingRules
                     .GetValidTargets(state, actor, actor.Position, skill)
                     .OrderBy(target => target.Id, StringComparer.Ordinal);

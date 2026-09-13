@@ -358,7 +358,7 @@ namespace BorderValley.Battle.Tests
         }
 
         [Test]
-        public void ChooseCommand_GroundSkillUsesOccupiedAnchorUnit()
+        public void ChooseCommand_GroundSkillUsesTargetPosition()
         {
             var skills = Skills(Skill(
                 "skill.quake",
@@ -376,7 +376,8 @@ namespace BorderValley.Battle.Tests
             var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
 
             Assert.That(command.SkillId, Is.EqualTo("skill.quake"));
-            Assert.That(command.TargetUnitId, Is.EqualTo("p1"));
+            Assert.That(command.TargetUnitId, Is.EqualTo(string.Empty));
+            Assert.That(command.TargetPosition, Is.EqualTo(new GridPosition(1, 0)));
         }
 
         [Test]
@@ -786,6 +787,7 @@ namespace BorderValley.Battle.Tests
                 var actualSkill = (UseSkillCommand)actual;
                 Assert.That(actualSkill.SkillId, Is.EqualTo(expectedSkill.SkillId));
                 Assert.That(actualSkill.TargetUnitId, Is.EqualTo(expectedSkill.TargetUnitId));
+                Assert.That(actualSkill.TargetPosition, Is.EqualTo(expectedSkill.TargetPosition));
             }
         }
     }

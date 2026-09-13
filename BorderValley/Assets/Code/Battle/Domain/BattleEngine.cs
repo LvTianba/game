@@ -23,6 +23,8 @@ namespace BorderValley.Battle.Domain
         private const string SkillNotFoundError = "battle.command.error.skill_not_found";
         private const string SkillNotOwnedError = "battle.command.error.skill_not_owned";
         private const string TargetNotFoundError = "battle.command.error.target_not_found";
+        private const string TargetPositionRequiredError =
+            "battle.command.error.target_position_required";
 
         private readonly BattleState state;
         private readonly IRandomSource random;
@@ -112,10 +114,9 @@ namespace BorderValley.Battle.Domain
             var result = command switch
             {
                 MoveCommand move => TryMove(move.UnitId, move.Destination),
-                UseSkillCommand skill => UseSkill(
-                    skill.UnitId,
-                    skill.SkillId,
-                    skill.TargetUnitId),
+                UseSkillCommand skill => skill.TargetPosition.HasValue
+                    ? UseSkill(skill.UnitId, skill.SkillId, skill.TargetPosition.Value)
+                    : UseSkill(skill.UnitId, skill.SkillId, skill.TargetUnitId),
                 EndTurnCommand endTurn => EndTurn(endTurn.UnitId),
                 _ => Failed(InvalidCommandError)
             };
@@ -136,6 +137,16 @@ namespace BorderValley.Battle.Domain
             string targetUnitId)
         {
             var result = UseSkillCore(unitId, skillId, targetUnitId);
+            EvaluateOutcome();
+            return result;
+        }
+
+        public BattleActionResult UseSkill(
+            string unitId,
+            string skillId,
+            GridPosition targetPosition)
+        {
+            var result = UseSkillCore(unitId, skillId, targetPosition);
             EvaluateOutcome();
             return result;
         }
@@ -199,6 +210,9 @@ namespace BorderValley.Battle.Domain
             if (!OwnsSkill(actor.Id, skill.Id))
                 return Failed(SkillNotOwnedError);
 
+            if (skill.Targeting == SkillTargeting.Ground)
+                return Failed(TargetPositionRequiredError);
+
             if (!state.TryGetUnit(targetUnitId, out var target))
                 return Failed(TargetNotFoundError);
 
@@ -212,6 +226,35 @@ namespace BorderValley.Battle.Domain
             return Succeeded(
                 SuccessSkillMessage,
                 execution.AffectedUnitIds.ToArray());
+        }
+
+        private BattleActionResult UseSkillCore(
+            string unitId,
+            string skillId,
+            GridPosition targetPosition)
+        {
+            if (!TryGetActiveActor(unitId, out var actor, out var failure))
+                return failure;
+
+            if (actor.HasActed)
+                return Failed(AlreadyActedError);
+
+            if (!skills.TryGetValue(skillId, out var skill))
+                return Failed(SkillNotFoundError);
+
+            if (!OwnsSkill(actor.Id, skill.Id))
+                return Failed(SkillNotOwnedError);
+
+            if (skill.Targeting != SkillTargeting.Ground)
+                return Failed(TargetPositionRequiredError);
+
+            var execution = SkillExecutor.Execute(state, actor, skill, targetPosition, random);
+            return execution.Success
+                ? Succeeded(SuccessSkillMessage, execution.AffectedUnitIds.ToArray())
+                : BattleActionResult.Failed(
+                    execution.FailureReason,
+                    execution.FailureReason,
+                    execution.AffectedUnitIds.ToArray());
         }
 
         private BattleActionResult EndTurnCore(string unitId)
