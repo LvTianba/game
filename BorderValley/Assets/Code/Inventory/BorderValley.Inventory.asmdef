@@ -1,0 +1,6 @@
+{
+  "name": "BorderValley.Inventory",
+  "rootNamespace": "BorderValley.Inventory",
+  "references": ["BorderValley.Core", "BorderValley.Data"],
+  "autoReferenced": true
+}
