@@ -9,7 +9,7 @@ namespace BorderValley.Battle.Domain
         {
             var raw = Math.Max(1, (int)MathF.Round(request.Attacker.Stats.Power * request.PowerMultiplier));
             var defense = request.DamageType == DamageType.Physical
-                ? request.Defender.Stats.Armor
+                ? Math.Max(0, request.Defender.Stats.Armor - request.ArmorPenetration)
                 : request.Defender.Stats.Resistance;
             var damage = Math.Max(1, raw - defense);
 

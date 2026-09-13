@@ -517,6 +517,84 @@ namespace BorderValley.Battle.Tests
         }
 
         [Test]
+        public void Execute_PhysicalDamageWithArmorPenetration_ReducesArmorByTwo()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 10, 0, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 10, 3, 5));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("piercing_strike", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.Damage,
+                    1f,
+                    default,
+                    0,
+                    0,
+                    DamageType.Physical,
+                    2));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("piercing_strike"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.DamageDealt, Is.EqualTo(9));
+            Assert.That(target.Health, Is.EqualTo(11));
+        }
+
+        [Test]
+        public void Execute_MagicalDamageWithArmorPenetration_StillUsesResistance()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 10, 0, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 10, 5, 4));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("magic_pierce", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.Damage,
+                    1f,
+                    default,
+                    0,
+                    0,
+                    DamageType.Magical,
+                    2));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("magic_pierce"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.DamageDealt, Is.EqualTo(6));
+            Assert.That(target.Health, Is.EqualTo(14));
+        }
+
+        [Test]
+        public void Execute_ArmorPenetration_CannotReduceDamageBelowOne()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 1, 0, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 1, 10, 0));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("weak_pierce", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.Damage,
+                    1f,
+                    default,
+                    0,
+                    0,
+                    DamageType.Physical,
+                    99));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("weak_pierce"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.DamageDealt, Is.EqualTo(1));
+            Assert.That(target.Health, Is.EqualTo(19));
+        }
+
+        [Test]
         public void Execute_PushArea_MovesMultipleEnemiesDeterministically()
         {
             var state = new BattleState(BattleMap.CreatePlain(4, 4));

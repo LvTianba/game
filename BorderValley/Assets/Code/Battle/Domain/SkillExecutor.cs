@@ -148,7 +148,8 @@ namespace BorderValley.Battle.Domain
                 target,
                 effect.PowerMultiplier,
                 effect.DamageType,
-                false);
+                false,
+                effect.ArmorPenetration);
             var result = DamageCalculator.Calculate(request, state.Map, random);
             damaged += result.Damage;
             return result.Damage > 0 || result.ShieldAbsorbed > 0;

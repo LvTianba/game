@@ -21,6 +21,7 @@ namespace BorderValley.Battle.Domain
         private const string DestinationUnreachableError = "battle.command.error.destination_unreachable";
         private const string AlreadyActedError = "battle.command.error.already_acted";
         private const string SkillNotFoundError = "battle.command.error.skill_not_found";
+        private const string SkillNotOwnedError = "battle.command.error.skill_not_owned";
         private const string TargetNotFoundError = "battle.command.error.target_not_found";
 
         private readonly BattleState state;
@@ -28,30 +29,46 @@ namespace BorderValley.Battle.Domain
         private readonly BattleTurnEngine turnEngine;
         private readonly Dictionary<string, SkillDefinition> skills =
             new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string[]> unitSkillIds =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, HashSet<string>> ownedSkillIds =
+            new(StringComparer.Ordinal);
 
         public BattleEngine(
             BattleState state,
             IRandomSource random,
-            IReadOnlyDictionary<string, SkillDefinition> skills = null)
+            IReadOnlyDictionary<string, SkillDefinition> skills = null,
+            IReadOnlyDictionary<string, string[]> unitSkills = null)
         {
             this.state = state ?? throw new ArgumentNullException(nameof(state));
             this.random = random ?? throw new ArgumentNullException(nameof(random));
             turnEngine = new BattleTurnEngine(state);
+            InitializeSkills(skills);
+            InitializeUnitSkills(unitSkills);
+        }
 
-            if (skills == null) return;
-            foreach (var pair in skills)
-            {
-                if (string.IsNullOrWhiteSpace(pair.Key))
-                    throw new ArgumentException("Skill IDs cannot be empty.", nameof(skills));
-                if (pair.Value == null)
-                    throw new ArgumentException("Skill definitions cannot contain null.", nameof(skills));
-                this.skills.Add(pair.Key, pair.Value);
-            }
+        public BattleEngine(BattleScenario scenario, IRandomSource random)
+            : this(
+                (scenario ?? throw new ArgumentNullException(nameof(scenario))).State,
+                random,
+                scenario.AllSkills,
+                scenario.UnitSkills)
+        {
         }
 
         public BattleState State => state;
         public BattleUnit ActiveUnit => turnEngine.ActiveUnit;
         public BattleOutcome Outcome { get; private set; } = BattleOutcome.InProgress;
+        public IReadOnlyDictionary<string, string[]> UnitSkills => unitSkillIds;
+        internal bool HasUnitSkillConfiguration => unitSkillIds.Count > 0;
+
+        public bool OwnsSkill(string unitId, string skillId)
+        {
+            return !string.IsNullOrWhiteSpace(unitId) &&
+                   !string.IsNullOrWhiteSpace(skillId) &&
+                   ownedSkillIds.TryGetValue(unitId, out var owned) &&
+                   owned.Contains(skillId);
+        }
 
         public void Start()
         {
@@ -157,6 +174,9 @@ namespace BorderValley.Battle.Domain
 
             if (!skills.TryGetValue(skillId, out var skill))
                 return Failed(SkillNotFoundError);
+
+            if (!OwnsSkill(actor.Id, skill.Id))
+                return Failed(SkillNotOwnedError);
 
             if (!state.TryGetUnit(targetUnitId, out var target))
                 return Failed(TargetNotFoundError);
@@ -274,5 +294,59 @@ namespace BorderValley.Battle.Domain
 
         private static BattleActionResult Failed(string errorCode) =>
             BattleActionResult.Failed(errorCode);
+
+        private void InitializeSkills(IReadOnlyDictionary<string, SkillDefinition> definitions)
+        {
+            if (definitions == null) return;
+
+            foreach (var pair in definitions)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key))
+                    throw new ArgumentException("Skill IDs cannot be empty.", nameof(definitions));
+                if (pair.Value == null)
+                    throw new ArgumentException("Skill definitions cannot contain null.", nameof(definitions));
+                if (!string.Equals(pair.Key, pair.Value.Id, StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"Skill dictionary key '{pair.Key}' must match SkillDefinition.Id '{pair.Value.Id}'.",
+                        nameof(definitions));
+                }
+                if (skills.ContainsKey(pair.Key))
+                {
+                    throw new ArgumentException(
+                        $"Duplicate skill definition ID: {pair.Key}",
+                        nameof(definitions));
+                }
+
+                skills.Add(pair.Key, pair.Value);
+            }
+        }
+
+        private void InitializeUnitSkills(IReadOnlyDictionary<string, string[]> mappings)
+        {
+            if (mappings == null) return;
+
+            foreach (var pair in mappings)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key) || !state.TryGetUnit(pair.Key, out _))
+                    throw new ArgumentException($"Unknown unit ID in skill ownership: {pair.Key}", nameof(mappings));
+                if (pair.Value == null)
+                    throw new ArgumentException("Unit skill arrays cannot be null.", nameof(mappings));
+
+                var owned = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var skillId in pair.Value)
+                {
+                    if (string.IsNullOrWhiteSpace(skillId))
+                        throw new ArgumentException("Owned skill IDs cannot be empty.", nameof(mappings));
+                    if (!owned.Add(skillId))
+                        throw new ArgumentException($"Duplicate owned skill ID: {skillId}", nameof(mappings));
+                    if (!skills.ContainsKey(skillId))
+                        throw new ArgumentException($"Unknown owned skill ID: {skillId}", nameof(mappings));
+                }
+
+                unitSkillIds.Add(pair.Key, (string[])pair.Value.Clone());
+                ownedSkillIds.Add(pair.Key, owned);
+            }
+        }
     }
 }

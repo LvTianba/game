@@ -135,7 +135,7 @@ namespace BorderValley.Battle.Domain
                         target);
 
                     candidates.Add(new AiCandidate(
-                        new UseSkillCommand(actor.Id, pair.Key, target.Id),
+                        new UseSkillCommand(actor.Id, skill.Id, target.Id),
                         evaluation.Score,
                         SkillCommandRank,
                         skill.Id,
@@ -422,7 +422,7 @@ namespace BorderValley.Battle.Domain
                 1,
                 (int)MathF.Round(actor.Stats.Power * effect.PowerMultiplier));
             var defense = effect.DamageType == DamageType.Physical
-                ? target.Stats.Armor
+                ? Math.Max(0, target.Stats.Armor - effect.ArmorPenetration)
                 : target.Stats.Resistance;
             var damage = Math.Max(1, raw - defense);
 
@@ -476,6 +476,7 @@ namespace BorderValley.Battle.Domain
                 _ => 0
             };
 
+        // Controller ruling for the vertical slice: threat is exactly the target's Power stat.
         private static int ThreatValue(BattleUnit target) =>
             target.Stats.Power * ThreatValuePerPower;
 
@@ -493,6 +494,12 @@ namespace BorderValley.Battle.Domain
                     throw new ArgumentException("Skill IDs cannot be empty.", nameof(skills));
                 if (pair.Value == null)
                     throw new ArgumentException("Skill definitions cannot contain null.", nameof(skills));
+                if (!string.Equals(pair.Key, pair.Value.Id, StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"Skill dictionary key '{pair.Key}' must match SkillDefinition.Id '{pair.Value.Id}'.",
+                        nameof(skills));
+                }
                 if (!definitionIds.Add(pair.Value.Id))
                 {
                     throw new ArgumentException(

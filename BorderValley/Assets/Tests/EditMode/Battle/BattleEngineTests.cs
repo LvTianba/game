@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using BorderValley.Battle.Domain;
 using BorderValley.Core.Random;
 using NUnit.Framework;
@@ -469,7 +470,21 @@ namespace BorderValley.Battle.Tests
                 enemySpeed,
                 enemyPosition ?? new GridPosition(2, 0)));
 
-            var engine = new BattleEngine(state, RandomSourceFactory.FromSeed("battle"), skills);
+            IReadOnlyDictionary<string, string[]> unitSkills = null;
+            if (skills != null)
+            {
+                unitSkills = new Dictionary<string, string[]>
+                {
+                    ["p1"] = skills.Keys.ToArray(),
+                    ["e1"] = skills.Keys.ToArray()
+                };
+            }
+
+            var engine = new BattleEngine(
+                state,
+                RandomSourceFactory.FromSeed("battle"),
+                skills,
+                unitSkills);
             engine.Start();
             return engine;
         }
