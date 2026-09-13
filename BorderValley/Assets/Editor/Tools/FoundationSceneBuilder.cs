@@ -1,6 +1,7 @@
 using BorderValley.Core;
 using BorderValley.Data;
 using BorderValley.UI;
+using BorderValley.UI.Battle;
 using BorderValley.World;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -50,14 +51,20 @@ namespace BorderValley.Editor
 
             var world = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             CreateMainCamera(world);
-            new GameObject("WorldPlaceholder").AddComponent<WorldPlaceholder>();
+            var worldPlaceholder = new GameObject("WorldPlaceholder");
+            worldPlaceholder.AddComponent<WorldPlaceholder>();
+            var battleEntry = new GameObject("WorldBattleEntry");
+            battleEntry.AddComponent<WorldBattleEntryView>();
             EditorSceneManager.SaveScene(world, "Assets/Scenes/World.unity");
+
+            BattleSceneBuilder.BuildScene();
 
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene("Assets/Scenes/Boot.unity", true),
                 new EditorBuildSettingsScene("Assets/Scenes/MainMenu.unity", true),
-                new EditorBuildSettingsScene("Assets/Scenes/World.unity", true)
+                new EditorBuildSettingsScene("Assets/Scenes/World.unity", true),
+                new EditorBuildSettingsScene(BattleSceneBuilder.ScenePath, true)
             };
             AssetDatabase.SaveAssets();
         }

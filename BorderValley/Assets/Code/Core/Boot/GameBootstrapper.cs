@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using BorderValley.Core.BattleFlow;
 using BorderValley.Core.Boot;
 using BorderValley.Core.Persistence;
 using BorderValley.Core.SceneManagement;
@@ -22,6 +23,7 @@ namespace BorderValley.Core
             DontDestroyOnLoad(gameObject);
             Context = new GameContext();
             Context.Register<ISceneLoader>(new UnitySceneLoader());
+            Context.Register<IBattleFlow>(new BattleFlowService());
             Context.Register(new SaveService(Application.persistentDataPath, System.Array.Empty<ISaveParticipant>()));
         }
 

@@ -28,18 +28,38 @@ namespace BorderValley.Battle.Domain
     public sealed class UseSkillCommand : BattleCommand
     {
         public UseSkillCommand(string unitId, string skillId, string targetUnitId)
+            : this(
+                unitId,
+                skillId,
+                string.IsNullOrWhiteSpace(targetUnitId)
+                    ? throw new ArgumentException(nameof(targetUnitId))
+                    : targetUnitId,
+                null)
+        {
+        }
+
+        public UseSkillCommand(string unitId, string skillId, GridPosition targetPosition)
+            : this(unitId, skillId, string.Empty, targetPosition)
+        {
+        }
+
+        private UseSkillCommand(
+            string unitId,
+            string skillId,
+            string targetUnitId,
+            GridPosition? targetPosition)
             : base(unitId)
         {
             SkillId = string.IsNullOrWhiteSpace(skillId)
                 ? throw new ArgumentException(nameof(skillId))
                 : skillId;
-            TargetUnitId = string.IsNullOrWhiteSpace(targetUnitId)
-                ? throw new ArgumentException(nameof(targetUnitId))
-                : targetUnitId;
+            TargetUnitId = targetUnitId ?? string.Empty;
+            TargetPosition = targetPosition;
         }
 
         public string SkillId { get; }
         public string TargetUnitId { get; }
+        public GridPosition? TargetPosition { get; }
     }
 
     public sealed class EndTurnCommand : BattleCommand

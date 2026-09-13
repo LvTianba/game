@@ -33,7 +33,8 @@ namespace BorderValley.Editor.Build
                 {
                     "Assets/Scenes/Boot.unity",
                     "Assets/Scenes/MainMenu.unity",
-                    "Assets/Scenes/World.unity"
+                    "Assets/Scenes/World.unity",
+                    "Assets/Scenes/Battle.unity"
                 },
                 locationPathName = output,
                 target = BuildTarget.Android,
