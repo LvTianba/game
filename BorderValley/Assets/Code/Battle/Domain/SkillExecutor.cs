@@ -83,7 +83,7 @@ namespace BorderValley.Battle.Domain
 
             foreach (var effect in skill.Effects)
             {
-                var targets = GetEffectTargets(state, actor, skill, anchor, unitTarget, effect);
+                var targets = SkillTargetingRules.GetEffectTargets(state, actor, skill, anchor, unitTarget, effect);
                 foreach (var target in targets)
                 {
                     if (!target.IsAlive) continue;
@@ -94,56 +94,6 @@ namespace BorderValley.Battle.Domain
             }
 
             return SkillExecutionResult.Succeeded(damaged, healed, affected);
-        }
-
-        private static IReadOnlyList<BattleUnit> GetEffectTargets(
-            BattleState state,
-            BattleUnit actor,
-            SkillDefinition skill,
-            GridPosition anchor,
-            BattleUnit unitTarget,
-            SkillEffectDefinition effect)
-        {
-            if (skill.Radius == 0)
-            {
-                if (unitTarget != null)
-                {
-                    return MatchesEffectTarget(effect, actor.Team, unitTarget)
-                        ? new[] { unitTarget }
-                        : Array.Empty<BattleUnit>();
-                }
-
-                return state.LivingUnits
-                    .Where(unit =>
-                        unit.Position == anchor &&
-                        MatchesEffectTarget(effect, actor.Team, unit))
-                    .ToArray();
-            }
-
-            return state.LivingUnits
-                .Where(unit =>
-                    ManhattanDistance(unit.Position, anchor) <= skill.Radius &&
-                    MatchesEffectTarget(effect, actor.Team, unit))
-                .ToArray();
-        }
-
-        private static bool MatchesEffectTarget(
-            SkillEffectDefinition effect,
-            Team actorTeam,
-            BattleUnit unit)
-        {
-            return effect.Kind switch
-            {
-                SkillEffectKind.Damage or SkillEffectKind.Push or SkillEffectKind.Pull =>
-                    unit.Team != actorTeam,
-                SkillEffectKind.Heal =>
-                    unit.Team == actorTeam,
-                SkillEffectKind.ApplyStatus when effect.StatusType == StatusType.Shielded =>
-                    unit.Team == actorTeam,
-                SkillEffectKind.ApplyStatus =>
-                    unit.Team != actorTeam,
-                _ => throw new ArgumentOutOfRangeException(nameof(effect.Kind))
-            };
         }
 
         private static bool ExecuteEffect(
@@ -306,9 +256,6 @@ namespace BorderValley.Battle.Domain
         {
             if (affectedSet.Add(unit)) affected.Add(unit);
         }
-
-        private static int ManhattanDistance(GridPosition left, GridPosition right) =>
-            Math.Abs(left.X - right.X) + Math.Abs(left.Y - right.Y);
 
         private static void ValidateArguments(
             BattleState state,

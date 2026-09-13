@@ -31,7 +31,7 @@ namespace BorderValley.Battle.Tests
         }
 
         [Test]
-        public void ChooseCommand_UsesTargetThreatValueToBreakLethalTie()
+        public void ChooseCommand_HigherPowerRaisesLethalThreatScore()
         {
             var skills = Skills(BasicAttack());
             var engine = Engine(
@@ -77,7 +77,7 @@ namespace BorderValley.Battle.Tests
 
             var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
 
-            Assert.That(command.SkillId, Is.EqualTo("skill.damage"));
+            Assert.That(command.SkillId, Is.EqualTo("damage"));
             Assert.That(command.TargetUnitId, Is.EqualTo("p1"));
         }
 
@@ -120,7 +120,7 @@ namespace BorderValley.Battle.Tests
 
             var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
 
-            Assert.That(command.SkillId, Is.EqualTo("skill.stun"));
+            Assert.That(command.SkillId, Is.EqualTo("stun"));
         }
 
         [Test]
@@ -141,7 +141,7 @@ namespace BorderValley.Battle.Tests
 
             var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
 
-            Assert.That(command.SkillId, Is.EqualTo("skill.taunt"));
+            Assert.That(command.SkillId, Is.EqualTo("taunt"));
         }
 
         [Test]
@@ -166,7 +166,7 @@ namespace BorderValley.Battle.Tests
 
             var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
 
-            Assert.That(command.SkillId, Is.EqualTo("skill.shield"));
+            Assert.That(command.SkillId, Is.EqualTo("shield"));
             Assert.That(command.TargetUnitId, Is.EqualTo("e1"));
         }
 
@@ -246,8 +246,8 @@ namespace BorderValley.Battle.Tests
         {
             var skills = new Dictionary<string, SkillDefinition>
             {
-                ["second"] = Skill("skill.b", SkillTargeting.Enemy, 1, Damage(1f)),
-                ["first"] = Skill("skill.a", SkillTargeting.Enemy, 1, Damage(1f))
+                ["key.b"] = Skill("skill.b", SkillTargeting.Enemy, 1, Damage(1f)),
+                ["key.z"] = Skill("skill.a", SkillTargeting.Enemy, 1, Damage(1f))
             };
             var engine = Engine(
                 new[]
@@ -259,7 +259,7 @@ namespace BorderValley.Battle.Tests
 
             var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
 
-            Assert.That(command.SkillId, Is.EqualTo("skill.a"));
+            Assert.That(command.SkillId, Is.EqualTo("key.z"));
         }
 
         [Test]
@@ -433,6 +433,129 @@ namespace BorderValley.Battle.Tests
                     new Dictionary<string, SkillDefinition> { ["bad"] = null }));
         }
 
+        [Test]
+        public void ChooseCommand_NoTargetInHealRange_MovesIntoHealingRange()
+        {
+            var skills = Skills(Skill("skill.heal", SkillTargeting.Ally, 1, Heal(5)));
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 2, speed: 1),
+                    Unit("a1", Team.Enemy, 4, speed: 0),
+                    Unit("p1", Team.Player, 0, speed: 0)
+                },
+                skills);
+            engine.State.GetUnit("a1").ApplyRawDamage(5);
+
+            var command = BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command, Is.TypeOf<MoveCommand>());
+            Assert.That(((MoveCommand)command).Destination, Is.EqualTo(new GridPosition(3, 0)));
+        }
+
+        [Test]
+        public void ChooseCommand_NoTargetInShieldRange_MovesIntoShieldRange()
+        {
+            var skills = Skills(StatusSkill(
+                "skill.shield",
+                StatusType.Shielded,
+                SkillTargeting.Ally,
+                5));
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 2, speed: 1),
+                    Unit("a1", Team.Enemy, 4, speed: 0),
+                    Unit("p1", Team.Player, 0, speed: 0)
+                },
+                skills);
+
+            var command = BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command, Is.TypeOf<MoveCommand>());
+            Assert.That(((MoveCommand)command).Destination, Is.EqualTo(new GridPosition(3, 0)));
+        }
+
+        [Test]
+        public void ChooseCommand_GroundAreaSkill_UsesLegalAnchorRadiusAndEffectTeam()
+        {
+            var skills = new Dictionary<string, SkillDefinition>
+            {
+                ["quake"] = GroundSkill(
+                    "skill.quake",
+                    2,
+                    2,
+                    Damage(1f))
+            };
+            var map = new BattleMap(5, 2, new[]
+            {
+                TerrainType.Plain, TerrainType.Plain, TerrainType.Bush,
+                TerrainType.Plain, TerrainType.Plain,
+                TerrainType.Plain, TerrainType.Plain, TerrainType.Plain,
+                TerrainType.Plain, TerrainType.Plain
+            });
+            var state = new BattleState(map);
+            state.AddUnit(Unit("e1", Team.Enemy, 0, 1, speed: 1));
+            state.AddUnit(Unit("a1", Team.Enemy, 2, 0, speed: 0));
+            state.AddUnit(Unit("p1", Team.Player, 4, 0, speed: 0));
+            var engine = new BattleEngine(state, RandomSourceFactory.FromSeed("ai"), skills);
+            engine.Start();
+
+            var command = BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command, Is.TypeOf<MoveCommand>());
+            Assert.That(((MoveCommand)command).Destination, Is.EqualTo(new GridPosition(0, 0)));
+        }
+
+        [Test]
+        public void ChooseCommand_DictionaryKeyDifferentFromDefinitionId_ExecutesSuccessfully()
+        {
+            var skills = new Dictionary<string, SkillDefinition>
+            {
+                ["basic"] = Skill("skill.basic", SkillTargeting.Enemy, 1, Damage(1f))
+            };
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 1, speed: 6),
+                    Unit("p1", Team.Player, 0, speed: 5)
+                },
+                skills);
+
+            var command = BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command, Is.TypeOf<UseSkillCommand>());
+            Assert.That(((UseSkillCommand)command).SkillId, Is.EqualTo("basic"));
+            Assert.That(engine.Execute(command).Success, Is.True);
+        }
+
+        [Test]
+        public void ChooseCommand_DuplicateSkillDefinitionId_Throws()
+        {
+            var skill = BasicAttack();
+            var skills = new Dictionary<string, SkillDefinition>
+            {
+                ["basic.a"] = skill,
+                ["basic.b"] = skill
+            };
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 1, speed: 6),
+                    Unit("p1", Team.Player, 0, speed: 5)
+                },
+                skills);
+
+            Assert.Throws<ArgumentException>(() =>
+                BattleAi.ChooseCommand(engine, "e1", skills));
+        }
+
+        private static SkillDefinition GroundSkill(
+            string id,
+            int range,
+            int radius,
+            params SkillEffectDefinition[] effects) =>
+            new(id, id + ".name", SkillTargeting.Ground, range, radius, 0, 0, effects);
         private static Dictionary<string, SkillDefinition> Skills(params SkillDefinition[] skills) =>
             skills.ToDictionary(skill => skill.Id, skill => skill, StringComparer.Ordinal);
 
