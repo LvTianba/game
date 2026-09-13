@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace BorderValley.Battle.Domain
 {
@@ -34,6 +35,7 @@ namespace BorderValley.Battle.Domain
         public bool HasMoved { get; private set; }
         public bool HasActed { get; private set; }
         public IReadOnlyList<StatusInstance> Statuses => statuses;
+        public Dictionary<string, int> Cooldowns { get; } = new(StringComparer.Ordinal);
 
         public void MoveTo(GridPosition position)
         {
@@ -52,6 +54,15 @@ namespace BorderValley.Battle.Domain
         {
             HasMoved = false;
             HasActed = false;
+
+            foreach (var skillId in Cooldowns.Keys.ToArray())
+                Cooldowns[skillId] = Math.Max(0, Cooldowns[skillId] - 1);
+        }
+
+        public void MoveForced(GridPosition position)
+        {
+            if (!IsAlive) throw new InvalidOperationException("Dead units cannot be moved.");
+            Position = position;
         }
 
         public void ApplyRawDamage(int amount)
@@ -80,4 +91,3 @@ namespace BorderValley.Battle.Domain
         public List<StatusInstance> MutableStatuses => statuses;
     }
 }
-
