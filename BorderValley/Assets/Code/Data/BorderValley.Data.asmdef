@@ -1,6 +1,0 @@
-{
-  "name": "BorderValley.Data",
-  "rootNamespace": "BorderValley.Data",
-  "references": ["BorderValley.Core"],
-  "autoReferenced": true
-}

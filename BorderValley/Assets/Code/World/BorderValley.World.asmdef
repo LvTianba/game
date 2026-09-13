@@ -1,6 +1,0 @@
-{
-  "name": "BorderValley.World",
-  "rootNamespace": "BorderValley.World",
-  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative"],
-  "autoReferenced": true
-}

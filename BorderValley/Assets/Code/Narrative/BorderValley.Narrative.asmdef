@@ -1,6 +1,0 @@
-{
-  "name": "BorderValley.Narrative",
-  "rootNamespace": "BorderValley.Narrative",
-  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Inventory"],
-  "autoReferenced": true
-}
