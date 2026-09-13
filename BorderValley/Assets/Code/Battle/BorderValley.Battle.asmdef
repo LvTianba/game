@@ -1,6 +1,0 @@
-{
-  "name": "BorderValley.Battle",
-  "rootNamespace": "BorderValley.Battle",
-  "references": ["BorderValley.Core", "BorderValley.Data"],
-  "autoReferenced": true
-}

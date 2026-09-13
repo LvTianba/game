@@ -1,7 +1,0 @@
-{
-  "name": "BorderValley.Editor",
-  "rootNamespace": "BorderValley.Editor",
-  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative", "BorderValley.World", "BorderValley.UI", "UnityEngine.UI"],
-  "includePlatforms": ["Editor"],
-  "autoReferenced": true
-}
