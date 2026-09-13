@@ -719,6 +719,226 @@ namespace BorderValley.Battle.Tests
             Assert.That(StatusSystem.GetShield(ally), Is.EqualTo(3));
             Assert.That(result.AffectedUnitIds, Is.EquivalentTo(new[] { "p2" }));
         }
+        [Test]
+        public void Execute_TauntedActor_OnlyAllowsActiveTauntSource()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            state.AddUnit(Unit("e2", Team.Enemy, 3));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            var other = state.GetUnit("e2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            var skill = SkillWithCooldown("strike", SkillTargeting.Enemy, 4, 2, 2,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var blocked = SkillExecutor.Execute(
+                state, actor, skill, other, RandomSourceFactory.FromSeed("strike"));
+
+            Assert.That(blocked.Success, Is.False);
+            Assert.That(blocked.FailureReason, Is.EqualTo("battle.command.error.taunted"));
+            Assert.That(actor.Mana, Is.EqualTo(10));
+            Assert.That(actor.HasActed, Is.False);
+            Assert.That(actor.Cooldowns, Is.Empty);
+            Assert.That(other.Health, Is.EqualTo(20));
+
+            var allowed = SkillExecutor.Execute(
+                state, actor, skill, source, RandomSourceFactory.FromSeed("strike"));
+
+            Assert.That(allowed.Success, Is.True);
+            Assert.That(source.Health, Is.LessThan(source.Stats.MaxHealth));
+            Assert.That(actor.Mana, Is.EqualTo(8));
+            Assert.That(actor.HasActed, Is.True);
+        }
+
+        [Test]
+        public void Execute_TauntedActor_GroundAreaCannotIncludeOtherEnemy()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(5, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 2));
+            state.AddUnit(Unit("e2", Team.Enemy, 3));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            var other = state.GetUnit("e2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            var skill = SkillWithRadius("quake", SkillTargeting.Ground, 3, 1, 2,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, source.Position, RandomSourceFactory.FromSeed("quake"));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("battle.command.error.taunted"));
+            Assert.That(actor.Mana, Is.EqualTo(10));
+            Assert.That(actor.HasActed, Is.False);
+            Assert.That(actor.Cooldowns, Is.Empty);
+            Assert.That(source.Health, Is.EqualTo(20));
+            Assert.That(other.Health, Is.EqualTo(20));
+        }
+
+        [Test]
+        public void Execute_TauntedActor_SelfAreaCannotIncludeOtherEnemy()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            state.AddUnit(Unit("e2", Team.Enemy, 2));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            var other = state.GetUnit("e2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            var skill = SkillWithRadius("nova", SkillTargeting.Self, 0, 2, 2,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, actor, RandomSourceFactory.FromSeed("nova"));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("battle.command.error.taunted"));
+            Assert.That(actor.Mana, Is.EqualTo(10));
+            Assert.That(actor.HasActed, Is.False);
+            Assert.That(source.Health, Is.EqualTo(20));
+            Assert.That(other.Health, Is.EqualTo(20));
+        }
+
+        [Test]
+        public void Execute_TauntSourceDead_AllowsOtherEnemyTarget()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            state.AddUnit(Unit("e2", Team.Enemy, 3));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            var other = state.GetUnit("e2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            source.ApplyRawDamage(source.Health);
+            var skill = Skill("strike", SkillTargeting.Enemy, 4, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, other, RandomSourceFactory.FromSeed("strike"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(other.Health, Is.LessThan(other.Stats.MaxHealth));
+        }
+
+        [Test]
+        public void Execute_TauntExpired_AllowsOtherEnemyTarget()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(4, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            state.AddUnit(Unit("e2", Team.Enemy, 3));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            var other = state.GetUnit("e2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 1, source.Id);
+            StatusSystem.ResolveTurnEnd(actor);
+            var skill = Skill("strike", SkillTargeting.Enemy, 4, 0,
+                new SkillEffectDefinition(SkillEffectKind.Damage, 1f, default, 0, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, other, RandomSourceFactory.FromSeed("strike"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(other.Health, Is.LessThan(other.Stats.MaxHealth));
+        }
+
+        [Test]
+        public void Execute_TauntedActor_HealingIsNotRestricted()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            actor.ApplyRawDamage(5);
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            var skill = Skill("heal", SkillTargeting.Self, 0, 0,
+                new SkillEffectDefinition(SkillEffectKind.Heal, 0f, default, 5, 0));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, actor, RandomSourceFactory.FromSeed("heal"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(actor.Health, Is.EqualTo(20));
+        }
+
+        [Test]
+        public void Execute_TauntedActor_ShieldIsNotRestricted()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0));
+            state.AddUnit(Unit("e1", Team.Enemy, 1));
+            var actor = state.GetUnit("p1");
+            var source = state.GetUnit("e1");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            var skill = Skill("shield", SkillTargeting.Self, 0, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.ApplyStatus,
+                    0f,
+                    StatusType.Shielded,
+                    4,
+                    2));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, actor, RandomSourceFactory.FromSeed("shield"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(StatusSystem.GetShield(actor), Is.EqualTo(4));
+        }
+        [Test]
+        public void Execute_DamageEffectWithCanCrit_ConsumesRandomAndCrits()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 8, 0, 0, 1f));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 8, 0, 0));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("crit", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.Damage,
+                    1f,
+                    default,
+                    0,
+                    0,
+                    canCrit: true));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("crit"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.DamageDealt, Is.EqualTo(12));
+            Assert.That(target.Health, Is.EqualTo(8));
+        }
+
+        [Test]
+        public void Execute_DamageEffectWithCritOptOut_NeverCrits()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(2, 1));
+            state.AddUnit(Unit("p1", Team.Player, 0, 8, 0, 0, 1f));
+            state.AddUnit(Unit("e1", Team.Enemy, 1, 8, 0, 0));
+            var actor = state.GetUnit("p1");
+            var target = state.GetUnit("e1");
+            var skill = Skill("no_crit", SkillTargeting.Enemy, 1, 0,
+                new SkillEffectDefinition(
+                    SkillEffectKind.Damage,
+                    1f,
+                    default,
+                    0,
+                    0,
+                    canCrit: false));
+
+            var result = SkillExecutor.Execute(
+                state, actor, skill, target, RandomSourceFactory.FromSeed("no_crit"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.DamageDealt, Is.EqualTo(8));
+            Assert.That(target.Health, Is.EqualTo(12));
+        }
         private static BattleState StateWithThreeUnits()
         {
             var state = new BattleState(BattleMap.CreatePlain(4, 1));
@@ -737,9 +957,10 @@ namespace BorderValley.Battle.Tests
             int x,
             int power,
             int armor,
-            int resistance) =>
+            int resistance,
+            float critChance = 0f) =>
             new BattleUnit(id, "test.unit", team,
-                new UnitStats(20, 10, power, armor, 5, 0f, resistance), new GridPosition(x, 0));
+                new UnitStats(20, 10, power, armor, 5, critChance, resistance), new GridPosition(x, 0));
 
         private static BattleUnit UnitAt(string id, Team team, int x, int y) =>
             new BattleUnit(id, "test.unit", team,

@@ -11,7 +11,8 @@ namespace BorderValley.Battle.Domain
             int magnitude,
             int duration,
             DamageType damageType = DamageType.Physical,
-            int armorPenetration = 0)
+            int armorPenetration = 0,
+            bool canCrit = true)
         {
             if (float.IsNaN(powerMultiplier) || float.IsInfinity(powerMultiplier))
                 throw new ArgumentOutOfRangeException(nameof(powerMultiplier));
@@ -23,6 +24,7 @@ namespace BorderValley.Battle.Domain
             Duration = Math.Max(0, duration);
             DamageType = damageType;
             ArmorPenetration = Math.Max(0, armorPenetration);
+            CanCrit = canCrit;
         }
 
         public SkillEffectKind Kind { get; }
@@ -32,5 +34,6 @@ namespace BorderValley.Battle.Domain
         public int Duration { get; }
         public DamageType DamageType { get; }
         public int ArmorPenetration { get; }
+        public bool CanCrit { get; }
     }
 }

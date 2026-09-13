@@ -11,6 +11,7 @@ namespace BorderValley.Battle.Domain
         private const string InvalidTargetReason = "battle.skill.error.invalid_target";
         private const string InsufficientManaReason = "battle.skill.error.insufficient_mana";
         private const string CooldownReason = "battle.skill.error.cooldown";
+        private const string TauntedReason = "battle.command.error.taunted";
 
         public static SkillExecutionResult Execute(
             BattleState state,
@@ -60,6 +61,9 @@ namespace BorderValley.Battle.Domain
             BattleUnit unitTarget,
             IRandomSource random)
         {
+            if (SkillTargetingRules.ViolatesActiveTaunt(state, actor, skill, anchor, unitTarget))
+                return SkillExecutionResult.Failed(TauntedReason);
+
             if (actor.Mana < skill.Mana)
                 return SkillExecutionResult.Failed(InsufficientManaReason);
 
@@ -148,7 +152,7 @@ namespace BorderValley.Battle.Domain
                 target,
                 effect.PowerMultiplier,
                 effect.DamageType,
-                false,
+                effect.CanCrit,
                 effect.ArmorPenetration);
             var result = DamageCalculator.Calculate(request, state.Map, random);
             damaged += result.Damage;

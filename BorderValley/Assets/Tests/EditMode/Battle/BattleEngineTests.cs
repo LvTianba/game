@@ -433,6 +433,74 @@ namespace BorderValley.Battle.Tests
             Assert.That(failure.Message, Does.StartWith("battle."));
         }
 
+        [Test]
+        public void UseSkill_WhenTauntedTargetsNonSource_FailsBeforeAnyMutation()
+        {
+            var engine = EngineWithUnits(
+                enemyPosition: new GridPosition(1, 0),
+                secondEnemyPosition: new GridPosition(3, 0),
+                skills: Skills(range: 4));
+            var actor = engine.State.GetUnit("p1");
+            var source = engine.State.GetUnit("e1");
+            var other = engine.State.GetUnit("e2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+
+            var result = engine.Execute(new UseSkillCommand("p1", "skill.damage", "e2"));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo("battle.command.error.taunted"));
+            Assert.That(actor.Mana, Is.EqualTo(10));
+            Assert.That(actor.HasActed, Is.False);
+            Assert.That(actor.Cooldowns, Is.Empty);
+            Assert.That(source.Health, Is.EqualTo(20));
+            Assert.That(other.Health, Is.EqualTo(20));
+        }
+
+        [Test]
+        public void UseSkill_WithCanCrit_UsesRealEnginePathAndCrits()
+        {
+            var engine = EngineWithUnits(
+                enemyPosition: new GridPosition(1, 0),
+                playerCritChance: 1f,
+                skills: Skills(canCrit: true));
+            var actor = engine.State.GetUnit("p1");
+            var target = engine.State.GetUnit("e1");
+
+            var result = engine.Execute(new UseSkillCommand("p1", "skill.damage", "e1"));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(target.Health, Is.EqualTo(8));
+            Assert.That(actor.Mana, Is.EqualTo(8));
+        }
+
+        [Test]
+        public void UseSkill_WithSameSeedAndCommand_IsDeterministic()
+        {
+            var skills = Skills(canCrit: true);
+            var firstEngine = EngineWithUnits(
+                enemyPosition: new GridPosition(1, 0),
+                playerCritChance: 0.5f,
+                skills: skills);
+            var secondEngine = EngineWithUnits(
+                enemyPosition: new GridPosition(1, 0),
+                playerCritChance: 0.5f,
+                skills: skills);
+
+            var first = firstEngine.Execute(new UseSkillCommand("p1", "skill.damage", "e1"));
+            var second = secondEngine.Execute(new UseSkillCommand("p1", "skill.damage", "e1"));
+
+            Assert.That(first.Success, Is.True);
+            Assert.That(second.Success, Is.True);
+            Assert.That(
+                secondEngine.State.GetUnit("e1").Health,
+                Is.EqualTo(firstEngine.State.GetUnit("e1").Health));
+            Assert.That(
+                secondEngine.State.GetUnit("p1").Mana,
+                Is.EqualTo(firstEngine.State.GetUnit("p1").Mana));
+            Assert.That(
+                secondEngine.State.GetUnit("p1").Cooldowns["skill.damage"],
+                Is.EqualTo(firstEngine.State.GetUnit("p1").Cooldowns["skill.damage"]));
+        }
         private sealed class UnknownCommand : BattleCommand
         {
             public UnknownCommand(string unitId)
@@ -450,7 +518,9 @@ namespace BorderValley.Battle.Tests
             int enemySpeed = 2,
             int enemyMana = 0,
             int width = 5,
-            IReadOnlyDictionary<string, SkillDefinition> skills = null)
+            float playerCritChance = 0f,
+            IReadOnlyDictionary<string, SkillDefinition> skills = null,
+            GridPosition? secondEnemyPosition = null)
         {
             var state = new BattleState(BattleMap.CreatePlain(width, 1));
             state.AddUnit(Unit(
@@ -460,7 +530,8 @@ namespace BorderValley.Battle.Tests
                 playerMana,
                 8,
                 playerSpeed,
-                playerPosition ?? new GridPosition(0, 0)));
+                playerPosition ?? new GridPosition(0, 0),
+                playerCritChance));
             state.AddUnit(Unit(
                 "e1",
                 Team.Enemy,
@@ -469,15 +540,29 @@ namespace BorderValley.Battle.Tests
                 8,
                 enemySpeed,
                 enemyPosition ?? new GridPosition(2, 0)));
+            if (secondEnemyPosition.HasValue)
+            {
+                state.AddUnit(Unit(
+                    "e2",
+                    Team.Enemy,
+                    enemyHealth,
+                    enemyMana,
+                    8,
+                    enemySpeed,
+                    secondEnemyPosition.Value));
+            }
 
             IReadOnlyDictionary<string, string[]> unitSkills = null;
             if (skills != null)
             {
-                unitSkills = new Dictionary<string, string[]>
+                var mappings = new Dictionary<string, string[]>
                 {
                     ["p1"] = skills.Keys.ToArray(),
                     ["e1"] = skills.Keys.ToArray()
                 };
+                if (secondEnemyPosition.HasValue)
+                    mappings["e2"] = skills.Keys.ToArray();
+                unitSkills = mappings;
             }
 
             var engine = new BattleEngine(
@@ -509,18 +594,20 @@ namespace BorderValley.Battle.Tests
             int maxMana,
             int power,
             int speed,
-            GridPosition position) =>
+            GridPosition position,
+            float critChance = 0f) =>
             new BattleUnit(
                 id,
                 "test.unit",
                 team,
-                new UnitStats(maxHealth, maxMana, power, 0, speed, 0f, 0),
+                new UnitStats(maxHealth, maxMana, power, 0, speed, critChance, 0),
                 position);
 
         private static IReadOnlyDictionary<string, SkillDefinition> Skills(
             int mana = 2,
             int cooldown = 2,
-            int range = 1) =>
+            int range = 1,
+            bool canCrit = true) =>
             new Dictionary<string, SkillDefinition>
             {
                 ["skill.damage"] = new SkillDefinition(
@@ -536,7 +623,8 @@ namespace BorderValley.Battle.Tests
                         1f,
                         StatusType.Burning,
                         0,
-                        0))
+                        0,
+                        canCrit: canCrit))
             };
     }
 }

@@ -18,6 +18,9 @@ namespace BorderValley.Battle.Domain
         private const int ApproachDistanceWeight = 10;
         private const int EndTurnScore = -1000;
         private const int ThreatValuePerPower = 1;
+        private const int MultiTargetBonus = 100;
+        private const int ThreatDamageWeight = 100;
+        private const long LethalThreatPenalty = -50000;
 
         private const int SkillCommandRank = 0;
         private const int MoveCommandRank = 1;
@@ -49,7 +52,7 @@ namespace BorderValley.Battle.Domain
                 throw new InvalidOperationException($"Unit '{unitId}' is dead.");
 
             var candidates = new List<AiCandidate>();
-            AddMoveCandidates(candidates, engine.State, actor, skills);
+            AddMoveCandidates(candidates, engine, actor, skills);
             AddSkillCandidates(candidates, engine.State, actor, skills);
             candidates.Add(new AiCandidate(
                 new EndTurnCommand(actor.Id),
@@ -72,12 +75,13 @@ namespace BorderValley.Battle.Domain
 
         private static void AddMoveCandidates(
             ICollection<AiCandidate> candidates,
-            BattleState state,
+            BattleEngine engine,
             BattleUnit actor,
             IReadOnlyDictionary<string, SkillDefinition> skills)
         {
             if (actor.HasMoved) return;
 
+            var state = engine.State;
             var movement = Math.Max(0, actor.Stats.Speed - StatusSystem.MovementPenalty(actor));
             var occupied = state.LivingUnits
                 .Where(unit => !ReferenceEquals(unit, actor))
@@ -96,7 +100,7 @@ namespace BorderValley.Battle.Domain
             {
                 candidates.Add(new AiCandidate(
                     new MoveCommand(actor.Id, destination),
-                    ScoreMove(state, actor, skills, destination),
+                    ScoreMove(engine, actor, skills, destination),
                     MoveCommandRank,
                     string.Empty,
                     string.Empty,
@@ -126,6 +130,16 @@ namespace BorderValley.Battle.Domain
                     var anchorPosition = skill.Targeting == SkillTargeting.Self
                         ? actor.Position
                         : target.Position;
+                    if (SkillTargetingRules.ViolatesActiveTaunt(
+                            state,
+                            actor,
+                            skill,
+                            anchorPosition,
+                            target))
+                    {
+                        continue;
+                    }
+
                     var evaluation = EvaluateSkill(
                         state,
                         actor,
@@ -146,14 +160,15 @@ namespace BorderValley.Battle.Domain
         }
 
         private static long ScoreMove(
-            BattleState state,
+            BattleEngine engine,
             BattleUnit actor,
             IReadOnlyDictionary<string, SkillDefinition> skills,
             GridPosition destination)
         {
-            var enemies = state.LivingUnits
-                .Where(unit => unit.Team != actor.Team)
-                .ToArray();
+            var state = engine.State;
+            var enemies = StatusSystem.TryGetActiveTauntSource(state, actor, out var tauntSource)
+                ? new[] { tauntSource }
+                : state.LivingUnits.Where(unit => unit.Team != actor.Team).ToArray();
             var nearestEnemyDistance = enemies.Length == 0
                 ? int.MaxValue
                 : enemies.Min(enemy =>
@@ -172,6 +187,17 @@ namespace BorderValley.Battle.Domain
                                  destination,
                                  skill))
                     {
+                        if (SkillTargetingRules.ViolatesActiveTaunt(
+                                state,
+                                actor,
+                                skill,
+                                anchor,
+                                null,
+                                destination))
+                        {
+                            continue;
+                        }
+
                         var evaluation = EvaluateSkill(
                             state,
                             actor,
@@ -198,6 +224,17 @@ namespace BorderValley.Battle.Domain
                     var anchorPosition = skill.Targeting == SkillTargeting.Self
                         ? destination
                         : target.Position;
+                    if (SkillTargetingRules.ViolatesActiveTaunt(
+                            state,
+                            actor,
+                            skill,
+                            anchorPosition,
+                            target,
+                            destination))
+                    {
+                        continue;
+                    }
+
                     var evaluation = EvaluateSkill(
                         state,
                         actor,
@@ -213,14 +250,136 @@ namespace BorderValley.Battle.Domain
                 }
             }
 
+            var score = 0L;
             if (enterRangeDistance != int.MaxValue)
-                return EnterRangeScore - enterRangeDistance;
-            if (nearestEnemyDistance == int.MaxValue)
-                return 0;
+                score = EnterRangeScore - enterRangeDistance;
+            else if (nearestEnemyDistance != int.MaxValue)
+                score = ApproachScore - nearestEnemyDistance * ApproachDistanceWeight;
 
-            return ApproachScore - nearestEnemyDistance * ApproachDistanceWeight;
+            return score + ScoreProjectedThreat(engine, actor, destination);
         }
 
+        private static long ScoreProjectedThreat(
+            BattleEngine engine,
+            BattleUnit actor,
+            GridPosition destination)
+        {
+            var state = engine.State;
+            var projectedDamage = state.LivingUnits
+                .Where(enemy => enemy.Team != actor.Team && !enemy.HasActed)
+                .Sum(enemy => EstimateMaximumDamage(
+                    engine,
+                    enemy,
+                    actor,
+                    destination));
+
+            if (projectedDamage >= actor.Health)
+                return LethalThreatPenalty;
+
+            return -(long)projectedDamage * ThreatDamageWeight;
+        }
+
+        private static int EstimateMaximumDamage(
+            BattleEngine engine,
+            BattleUnit attacker,
+            BattleUnit target,
+            GridPosition targetPosition)
+        {
+            var maximumDamage = 0;
+            foreach (var skill in engine.GetSkillsForUnitById(attacker.Id).Values)
+            {
+                if (!CanUseSkillNow(attacker, skill)) continue;
+                if (skill.Effects.All(effect => effect.Kind != SkillEffectKind.Damage))
+                    continue;
+                if (StatusSystem.TryGetActiveTauntSource(
+                        engine.State,
+                        attacker,
+                        out var tauntSource) &&
+                    !ReferenceEquals(target, tauntSource))
+                {
+                    continue;
+                }
+
+                maximumDamage = Math.Max(
+                    maximumDamage,
+                    EstimateSkillDamage(
+                        engine.State,
+                        attacker,
+                        skill,
+                        target,
+                        targetPosition));
+            }
+
+            return maximumDamage;
+        }
+        private static int EstimateSkillDamage(
+            BattleState state,
+            BattleUnit attacker,
+            SkillDefinition skill,
+            BattleUnit target,
+            GridPosition targetPosition)
+        {
+            if (!CanDamageTargetAtPosition(
+                    state,
+                    attacker,
+                    skill,
+                    targetPosition))
+            {
+                return 0;
+            }
+
+            return skill.Effects
+                .Where(effect => effect.Kind == SkillEffectKind.Damage)
+                .Sum(effect => PredictDamage(
+                    state.Map,
+                    attacker,
+                    attacker.Position,
+                    target,
+                    effect));
+        }
+
+        private static bool CanDamageTargetAtPosition(
+            BattleState state,
+            BattleUnit attacker,
+            SkillDefinition skill,
+            GridPosition targetPosition)
+        {
+            return skill.Targeting switch
+            {
+                SkillTargeting.Enemy => IsWithinTargetingRange(
+                    state.Map,
+                    attacker.Position,
+                    targetPosition,
+                    skill),
+                SkillTargeting.Ground => SkillTargetingRules
+                    .GetValidGroundTargets(state, attacker.Position, skill)
+                    .Any(anchor => SkillTargetingRules.ManhattanDistance(
+                        anchor,
+                        targetPosition) <= skill.Radius),
+                SkillTargeting.Self => skill.Radius > 0 &&
+                    SkillTargetingRules.ManhattanDistance(
+                        attacker.Position,
+                        targetPosition) <= skill.Radius,
+                SkillTargeting.Ally => false,
+                _ => throw new ArgumentOutOfRangeException(nameof(skill.Targeting))
+            };
+        }
+
+        private static bool IsWithinTargetingRange(
+            BattleMap map,
+            GridPosition origin,
+            GridPosition target,
+            SkillDefinition skill)
+        {
+            if (!map.InBounds(target) ||
+                SkillTargetingRules.ManhattanDistance(origin, target) > skill.Range)
+            {
+                return false;
+            }
+
+            return skill.Range <= 1 ||
+                   SkillTargetingRules.HasLineOfSight(map, origin, target);
+        }
         private static SkillEvaluation EvaluateSkill(
             BattleState state,
             BattleUnit actor,
@@ -234,10 +393,12 @@ namespace BorderValley.Battle.Domain
             var nearestAffectedDistance = int.MaxValue;
             var projectedHealth = new Dictionary<BattleUnit, int>();
             var remainingShields = new Dictionary<BattleUnit, int>();
+            var effectiveTargets = new HashSet<BattleUnit>();
 
             void MarkEffect(BattleUnit target)
             {
                 hasEffect = true;
+                effectiveTargets.Add(target);
                 nearestAffectedDistance = Math.Min(
                     nearestAffectedDistance,
                     DistanceFromActor(actor, target, actorPosition));
@@ -330,6 +491,8 @@ namespace BorderValley.Battle.Domain
                 }
             }
 
+            score += Math.Max(0, effectiveTargets.Count - 1) * MultiTargetBonus;
+
             foreach (var target in projectedHealth)
             {
                 if (target.Value <= 0)
@@ -411,6 +574,7 @@ namespace BorderValley.Battle.Domain
             return true;
         }
 
+        // Planning uses non-critical expected damage and never consumes the battle RNG.
         private static int PredictDamage(
             BattleMap map,
             BattleUnit actor,

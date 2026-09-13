@@ -201,7 +201,7 @@ namespace BorderValley.Battle.Tests
                 new[]
                 {
                     Unit("e1", Team.Enemy, 0, speed: 3),
-                    Unit("p1", Team.Player, 5, speed: 0)
+                    Unit("p1", Team.Player, 5, speed: 0, power: 0)
                 },
                 skills,
                 width: 7);
@@ -547,6 +547,125 @@ namespace BorderValley.Battle.Tests
                 BattleAi.ChooseCommand(engine, "e1", skills));
         }
 
+        [Test]
+        public void ChooseCommand_PrefersNonLethalMoveWhenBaseScoresAreEqual()
+        {
+            var skills = Skills(BasicAttack());
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 0, 1, maxHealth: 8, speed: 1),
+                    Unit("pt", Team.Player, 1, 0, speed: 0),
+                    Unit("p1", Team.Player, 1, 1, speed: 0)
+                },
+                skills,
+                width: 2,
+                height: 3);
+            var actor = engine.State.GetUnit("e1");
+            actor.MarkActionUsed();
+
+            var command = BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command, Is.TypeOf<MoveCommand>());
+            Assert.That(((MoveCommand)command).Destination, Is.EqualTo(new GridPosition(0, 2)));
+        }
+
+        [Test]
+        public void ChooseCommand_PrefersSkillHittingMoreEffectiveTargets()
+        {
+            var skills = new Dictionary<string, SkillDefinition>
+            {
+                ["skill.single"] = SkillWithRadius(
+                    "skill.single",
+                    SkillTargeting.Enemy,
+                    1,
+                    0,
+                    Damage(1f)),
+                ["skill.area"] = SkillWithRadius(
+                    "skill.area",
+                    SkillTargeting.Enemy,
+                    1,
+                    1,
+                    Damage(0.25f))
+            };
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 0, 0, speed: 1, power: 4),
+                    Unit("p1", Team.Player, 1, 0, speed: 0),
+                    Unit("p2", Team.Player, 1, 1, speed: 0)
+                },
+                skills,
+                width: 3,
+                height: 2);
+            engine.State.GetUnit("e1").MoveTo(new GridPosition(0, 0));
+
+            var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command.SkillId, Is.EqualTo("skill.area"));
+            Assert.That(command.TargetUnitId, Is.EqualTo("p1"));
+        }
+
+        [Test]
+        public void ChooseCommand_WhenTaunted_OnlyTargetsActiveTauntSource()
+        {
+            var skills = Skills(Skill(
+                "skill.basic",
+                SkillTargeting.Enemy,
+                3,
+                Damage(1f)));
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 0, 0, speed: 1),
+                    Unit("p1", Team.Player, 1, 0, speed: 0),
+                    Unit("p2", Team.Player, 3, 0, speed: 0)
+                },
+                skills,
+                width: 5);
+            var actor = engine.State.GetUnit("e1");
+            var source = engine.State.GetUnit("p2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            actor.MoveTo(actor.Position);
+
+            var command = (UseSkillCommand)BattleAi.ChooseCommand(engine, "e1", skills);
+
+            Assert.That(command.SkillId, Is.EqualTo("skill.basic"));
+            Assert.That(command.TargetUnitId, Is.EqualTo(source.Id));
+        }
+
+        [Test]
+        public void ChooseCommand_WhenTaunted_ChoosesSafeMoveTowardSource()
+        {
+            var actorSkills = new Dictionary<string, SkillDefinition>();
+            var threatSkills = Skills(BasicAttack());
+            var unitSkills = new Dictionary<string, string[]>
+            {
+                ["e1"] = System.Array.Empty<string>(),
+                ["p1"] = threatSkills.Keys.ToArray(),
+                ["p2"] = System.Array.Empty<string>()
+            };
+            var engine = Engine(
+                new[]
+                {
+                    Unit("e1", Team.Enemy, 0, 1, maxHealth: 8, speed: 1),
+                    Unit("p1", Team.Player, 1, 0, speed: 0),
+                    Unit("p2", Team.Player, 1, 2, speed: 0)
+                },
+                threatSkills,
+                width: 2,
+                height: 3,
+                unitSkills: unitSkills);
+            var actor = engine.State.GetUnit("e1");
+            var source = engine.State.GetUnit("p2");
+            StatusSystem.Apply(actor, StatusType.Taunted, 1, 2, source.Id);
+            actor.MarkActionUsed();
+
+            var command = BattleAi.ChooseCommand(engine, "e1", actorSkills);
+
+            Assert.That(command, Is.TypeOf<MoveCommand>());
+            Assert.That(((MoveCommand)command).Destination, Is.EqualTo(new GridPosition(0, 2)));
+        }
         private static SkillDefinition GroundSkill(
             string id,
             int range,
@@ -581,6 +700,14 @@ namespace BorderValley.Battle.Tests
         private static SkillEffectDefinition Heal(int amount) =>
             new(SkillEffectKind.Heal, 0f, default, amount, 0);
 
+        private static SkillDefinition SkillWithRadius(
+            string id,
+            SkillTargeting targeting,
+            int range,
+            int radius,
+            params SkillEffectDefinition[] effects) =>
+            new(id, id + ".name", targeting, range, radius, 0, 0, effects);
+
         private static SkillDefinition Skill(
             string id,
             SkillTargeting targeting,
@@ -608,11 +735,21 @@ namespace BorderValley.Battle.Tests
             IEnumerable<BattleUnit> units,
             IReadOnlyDictionary<string, SkillDefinition> skills,
             int width = 7,
-            int height = 1)
+            int height = 1,
+            IReadOnlyDictionary<string, string[]> unitSkills = null)
         {
             var state = new BattleState(BattleMap.CreatePlain(width, height));
-            foreach (var unit in units) state.AddUnit(unit);
-            var engine = new BattleEngine(state, RandomSourceFactory.FromSeed("ai"), skills);
+            var roster = units.ToArray();
+            foreach (var unit in roster) state.AddUnit(unit);
+            unitSkills ??= roster.ToDictionary(
+                unit => unit.Id,
+                unit => skills == null ? System.Array.Empty<string>() : skills.Keys.ToArray(),
+                StringComparer.Ordinal);
+            var engine = new BattleEngine(
+                state,
+                RandomSourceFactory.FromSeed("ai"),
+                skills,
+                unitSkills);
             engine.Start();
             return engine;
         }

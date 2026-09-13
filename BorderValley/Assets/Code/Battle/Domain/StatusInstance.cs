@@ -13,7 +13,6 @@ namespace BorderValley.Battle.Domain
         public StatusType Type { get; }
         public int Magnitude { get; internal set; }
         public int RemainingTurns { get; internal set; }
-        public string SourceUnitId { get; }
+        public string SourceUnitId { get; internal set; }
     }
 }
-

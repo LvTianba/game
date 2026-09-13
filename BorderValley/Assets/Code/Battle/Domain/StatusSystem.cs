@@ -17,6 +17,8 @@ namespace BorderValley.Battle.Domain
                 existing.Magnitude += magnitude;
             else
                 existing.Magnitude = System.Math.Max(existing.Magnitude, magnitude);
+            if (type == StatusType.Taunted)
+                existing.SourceUnitId = sourceId;
             existing.RemainingTurns = System.Math.Max(existing.RemainingTurns, duration);
         }
 
@@ -37,6 +39,30 @@ namespace BorderValley.Battle.Domain
 
         public static bool IsStunned(BattleUnit unit) =>
             unit.MutableStatuses.Any(status => status.Type == StatusType.Stunned);
+
+        public static bool IsTaunted(BattleUnit unit) =>
+            unit.MutableStatuses.Any(status => status.Type == StatusType.Taunted);
+
+        public static bool TryGetActiveTauntSource(
+            BattleState state,
+            BattleUnit unit,
+            out BattleUnit source)
+        {
+            if (state == null) throw new System.ArgumentNullException(nameof(state));
+            if (unit == null) throw new System.ArgumentNullException(nameof(unit));
+
+            source = null;
+            var taunt = unit.MutableStatuses.FirstOrDefault(status => status.Type == StatusType.Taunted);
+            if (taunt == null || string.IsNullOrWhiteSpace(taunt.SourceUnitId))
+                return false;
+            if (!state.TryGetUnit(taunt.SourceUnitId, out source) || !source.IsAlive)
+            {
+                source = null;
+                return false;
+            }
+
+            return true;
+        }
 
         public static int MovementPenalty(BattleUnit unit) =>
             unit.MutableStatuses.Where(status => status.Type == StatusType.Slowed)

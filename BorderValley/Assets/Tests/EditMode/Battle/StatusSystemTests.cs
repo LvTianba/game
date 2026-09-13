@@ -97,6 +97,61 @@ namespace BorderValley.Battle.Tests
             Assert.That(unit.Statuses.Count, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Apply_TauntedRefreshesSourceAndDuration()
+        {
+            var unit = Unit();
+
+            StatusSystem.Apply(unit, StatusType.Taunted, 1, 2, "source.a");
+            StatusSystem.Apply(unit, StatusType.Taunted, 1, 4, "source.b");
+
+            Assert.That(unit.Statuses.Count, Is.EqualTo(1));
+            Assert.That(unit.Statuses[0].SourceUnitId, Is.EqualTo("source.b"));
+            Assert.That(unit.Statuses[0].RemainingTurns, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void TryGetActiveTauntSource_ReturnsOnlyLivingSource()
+        {
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            var target = new BattleUnit(
+                "target",
+                "test.unit",
+                Team.Enemy,
+                new UnitStats(20, 0, 1, 0, 5, 0f, 0),
+                new GridPosition(0, 0));
+            var source = new BattleUnit(
+                "source",
+                "test.unit",
+                Team.Player,
+                new UnitStats(20, 0, 1, 0, 5, 0f, 0),
+                new GridPosition(1, 0));
+            state.AddUnit(target);
+            state.AddUnit(source);
+            StatusSystem.Apply(target, StatusType.Taunted, 1, 2, source.Id);
+
+            var found = StatusSystem.TryGetActiveTauntSource(state, target, out var activeSource);
+
+            Assert.That(found, Is.True);
+            Assert.That(activeSource, Is.SameAs(source));
+
+            source.ApplyRawDamage(source.Health);
+
+            Assert.That(StatusSystem.TryGetActiveTauntSource(state, target, out activeSource), Is.False);
+            Assert.That(activeSource, Is.Null);
+            Assert.That(StatusSystem.IsTaunted(target), Is.True);
+        }
+
+        [Test]
+        public void ResolveTurnEnd_RemovesExpiredTaunt()
+        {
+            var unit = Unit();
+            StatusSystem.Apply(unit, StatusType.Taunted, 1, 1, "source");
+
+            StatusSystem.ResolveTurnEnd(unit);
+
+            Assert.That(StatusSystem.IsTaunted(unit), Is.False);
+        }
         private static BattleUnit Unit() =>
             new BattleUnit("b", "test.unit", Team.Enemy,
                 new UnitStats(20, 0, 1, 0, 5, 0f, 0), new GridPosition(0, 0));

@@ -127,6 +127,43 @@ namespace BorderValley.Battle.Domain
             };
         }
 
+        internal static bool IsHostileEffect(SkillEffectDefinition effect)
+        {
+            return effect.Kind is SkillEffectKind.Damage or SkillEffectKind.Push or SkillEffectKind.Pull ||
+                   effect.Kind == SkillEffectKind.ApplyStatus &&
+                   effect.StatusType != StatusType.Shielded;
+        }
+
+        internal static bool ViolatesActiveTaunt(
+            BattleState state,
+            BattleUnit actor,
+            SkillDefinition skill,
+            GridPosition anchor,
+            BattleUnit unitTarget,
+            GridPosition? actorPositionOverride = null)
+        {
+            if (!StatusSystem.TryGetActiveTauntSource(state, actor, out var source))
+                return false;
+
+            foreach (var effect in skill.Effects.Where(IsHostileEffect))
+            {
+                foreach (var target in GetEffectTargets(
+                             state,
+                             actor,
+                             skill,
+                             anchor,
+                             unitTarget,
+                             effect,
+                             actorPositionOverride))
+                {
+                    if (target.Team != actor.Team && !ReferenceEquals(target, source))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static int ManhattanDistance(GridPosition left, GridPosition right) =>
             Math.Abs(left.X - right.X) + Math.Abs(left.Y - right.Y);
 

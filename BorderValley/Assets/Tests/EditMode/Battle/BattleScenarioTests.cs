@@ -14,6 +14,7 @@ namespace BorderValley.Battle.Tests
             "skill.shield_bash",
             "skill.whirlwind",
             "skill.iron_guard",
+            "skill.taunt",
             "skill.piercing_shot",
             "skill.snare",
             "skill.twin_shot",
@@ -79,7 +80,7 @@ namespace BorderValley.Battle.Tests
 
             Assert.That(
                 scenario.UnitSkills["player.warrior"],
-                Is.EquivalentTo(new[] { "skill.shield_bash", "skill.whirlwind", "skill.iron_guard", "skill.basic" }));
+                Is.EquivalentTo(new[] { "skill.shield_bash", "skill.whirlwind", "skill.iron_guard", "skill.taunt", "skill.basic" }));
             Assert.That(
                 scenario.UnitSkills["player.ranger"],
                 Is.EquivalentTo(new[] { "skill.piercing_shot", "skill.snare", "skill.twin_shot", "skill.basic" }));
@@ -113,6 +114,14 @@ namespace BorderValley.Battle.Tests
             Assert.That(ironGuard.Targeting, Is.EqualTo(SkillTargeting.Self));
             Assert.That(ironGuard.Mana, Is.EqualTo(3));
             AssertStatusEffect(ironGuard, StatusType.Shielded, 6, 2);
+
+            var taunt = scenario.AllSkills["skill.taunt"];
+            Assert.That(taunt.Targeting, Is.EqualTo(SkillTargeting.Enemy));
+            Assert.That(taunt.Range, Is.EqualTo(1));
+            Assert.That(taunt.Radius, Is.Zero);
+            Assert.That(taunt.Mana, Is.EqualTo(2));
+            Assert.That(taunt.Cooldown, Is.EqualTo(2));
+            AssertStatusEffect(taunt, StatusType.Taunted, 1, 2);
 
             var piercingShot = scenario.AllSkills["skill.piercing_shot"];
             Assert.That(piercingShot.Targeting, Is.EqualTo(SkillTargeting.Enemy));
@@ -151,6 +160,21 @@ namespace BorderValley.Battle.Tests
             Assert.That(scenario.AllSkills["skill.basic"].Targeting, Is.EqualTo(SkillTargeting.Enemy));
             Assert.That(scenario.AllSkills["skill.basic"].Range, Is.EqualTo(1));
             Assert.That(scenario.AllSkills["skill.basic"].Mana, Is.Zero);
+        }
+
+        [Test]
+        public void CoreScenario_DamageEffectsAllowCritByDefault()
+        {
+            var scenario = BattleScenarioFactory.CreateCoreScenario();
+
+            var damageEffects = scenario.AllSkills.Values
+                .SelectMany(skill => skill.Effects)
+                .Where(effect => effect.Kind == SkillEffectKind.Damage)
+                .ToArray();
+
+            Assert.That(damageEffects, Is.Not.Empty);
+            Assert.That(damageEffects, Has.All.Matches<SkillEffectDefinition>(
+                effect => effect.CanCrit));
         }
 
         [Test]

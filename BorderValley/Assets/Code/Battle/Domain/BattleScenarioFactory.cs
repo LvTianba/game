@@ -18,6 +18,7 @@ namespace BorderValley.Battle.Domain
                     "skill.shield_bash",
                     "skill.whirlwind",
                     "skill.iron_guard",
+                    "skill.taunt",
                     "skill.basic"
                 },
                 ["player.ranger"] = new[]
@@ -198,6 +199,14 @@ namespace BorderValley.Battle.Domain
                     0,
                     3,
                     Status(StatusType.Shielded, 6, 2)),
+                ["skill.taunt"] = SkillWithCooldown(
+                    "skill.taunt",
+                    SkillTargeting.Enemy,
+                    1,
+                    0,
+                    2,
+                    2,
+                    Status(StatusType.Taunted, 1, 2)),
                 ["skill.piercing_shot"] = Skill(
                     "skill.piercing_shot",
                     SkillTargeting.Enemy,
@@ -271,6 +280,26 @@ namespace BorderValley.Battle.Domain
                 radius,
                 mana,
                 0,
+                effects);
+        }
+
+        private static SkillDefinition SkillWithCooldown(
+            string id,
+            SkillTargeting targeting,
+            int range,
+            int radius,
+            int mana,
+            int cooldown,
+            params SkillEffectDefinition[] effects)
+        {
+            return new SkillDefinition(
+                id,
+                id + ".name",
+                targeting,
+                range,
+                radius,
+                mana,
+                cooldown,
                 effects);
         }
 
