@@ -64,7 +64,11 @@ namespace BorderValley.UI.Battle
 
         public BattleActionResult Execute(BattleCommand command)
         {
+            var activeUnitId = ActiveUnit?.Id;
             var result = engine.Execute(command);
+            if (IsFinished || !string.Equals(activeUnitId, ActiveUnit?.Id, StringComparison.Ordinal))
+                SelectedSkillId = null;
+
             Notify();
             return result;
         }
@@ -74,6 +78,9 @@ namespace BorderValley.UI.Battle
             if (!IsPlayerTurn) return BattleHighlightKind.None;
             if (SelectedSkillId == null)
             {
+                if (IsFinished || ActiveUnit.HasMoved)
+                    return BattleHighlightKind.None;
+
                 return ReachableCells.ContainsKey(cell)
                     ? BattleHighlightKind.Move
                     : BattleHighlightKind.None;
@@ -97,25 +104,8 @@ namespace BorderValley.UI.Battle
                 : BattleHighlightKind.None;
         }
 
-        private IReadOnlyDictionary<GridPosition, int> ReachableCells
-        {
-            get
-            {
-                var occupied = engine.State.LivingUnits
-                    .Where(unit => !ReferenceEquals(unit, ActiveUnit))
-                    .Select(unit => unit.Position)
-                    .ToHashSet();
-                var movement = Math.Max(
-                    0,
-                    ActiveUnit.Stats.Speed - StatusSystem.MovementPenalty(ActiveUnit));
-
-                return GridPathfinder.FindReachable(
-                    engine.State.Map,
-                    ActiveUnit.Position,
-                    movement,
-                    occupied);
-            }
-        }
+        private IReadOnlyDictionary<GridPosition, int> ReachableCells =>
+            BattleMovement.FindReachableDestinations(engine.State, ActiveUnit);
 
         private BattleActionResult TryMoveOrBasicAttack(GridPosition cell)
         {

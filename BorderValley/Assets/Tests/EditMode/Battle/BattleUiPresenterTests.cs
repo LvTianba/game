@@ -1,3 +1,4 @@
+using System.Linq;
 using BorderValley.Battle.Domain;
 using BorderValley.Core.Random;
 using BorderValley.UI.Battle;
@@ -39,6 +40,83 @@ namespace BorderValley.Battle.Tests
         {
             var presenter = Create();
             presenter.SelectSkill("skill.piercing_shot");
+
+            Assert.That(
+                presenter.GetHighlight(new GridPosition(5, 2)),
+                Is.EqualTo(BattleHighlightKind.Target));
+        }
+
+        [Test]
+        public void GetHighlight_OriginCell_ReturnsNone()
+        {
+            var presenter = Create();
+
+            Assert.That(
+                presenter.GetHighlight(presenter.ActiveUnit.Position),
+                Is.EqualTo(BattleHighlightKind.None));
+        }
+
+        [Test]
+        public void GetHighlight_AfterMovement_ReturnsNone()
+        {
+            var presenter = Create();
+            presenter.TapCell(new GridPosition(0, 2));
+
+            Assert.That(
+                presenter.GetHighlight(new GridPosition(0, 1)),
+                Is.EqualTo(BattleHighlightKind.None));
+        }
+
+        [Test]
+        public void GetHighlight_AfterBattleFinished_ReturnsNone()
+        {
+            var presenter = Create();
+            foreach (var enemy in presenter.Engine.State.UnitsOf(Team.Enemy).ToArray())
+                enemy.ApplyRawDamage(enemy.Health);
+
+            var result = presenter.Execute(new EndTurnCommand(presenter.ActiveUnit.Id));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(presenter.IsFinished, Is.True);
+            Assert.That(
+                presenter.GetHighlight(new GridPosition(0, 2)),
+                Is.EqualTo(BattleHighlightKind.None));
+        }
+
+        [Test]
+        public void EndTurn_ClearsSelectedSkill()
+        {
+            var presenter = Create();
+            var previousActive = presenter.ActiveUnit;
+            presenter.SelectSkill("skill.piercing_shot");
+
+            var result = presenter.EndTurn();
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(presenter.ActiveUnit, Is.Not.SameAs(previousActive));
+            Assert.That(presenter.SelectedSkillId, Is.Null);
+        }
+
+        [Test]
+        public void Execute_EndTurnCommand_ClearsSelectedSkill()
+        {
+            var presenter = Create();
+            var previousActive = presenter.ActiveUnit;
+            presenter.SelectSkill("skill.piercing_shot");
+
+            var result = presenter.Execute(new EndTurnCommand(previousActive.Id));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(presenter.ActiveUnit, Is.Not.SameAs(previousActive));
+            Assert.That(presenter.SelectedSkillId, Is.Null);
+        }
+
+        [Test]
+        public void GetHighlight_SelectedSkillAfterMovement_StillMarksTargetCells()
+        {
+            var presenter = Create();
+            presenter.TapCell(new GridPosition(4, 2));
+            presenter.SelectSkill("skill.basic");
 
             Assert.That(
                 presenter.GetHighlight(new GridPosition(5, 2)),

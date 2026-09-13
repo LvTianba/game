@@ -169,25 +169,17 @@ namespace BorderValley.Battle.Domain
             if (destination == actor.Position)
                 return Failed(DestinationOccupiedError);
 
-            var occupied = state.LivingUnits
-                .Where(unit => !ReferenceEquals(unit, actor))
-                .Select(unit => unit.Position)
-                .ToHashSet();
-
-            if (occupied.Contains(destination))
-                return Failed(DestinationOccupiedError);
-
-            var movement = Math.Max(
-                0,
-                actor.Stats.Speed - StatusSystem.MovementPenalty(actor));
-            var reachable = GridPathfinder.FindReachable(
-                state.Map,
-                actor.Position,
-                movement,
-                occupied);
-
+            var reachable = BattleMovement.FindReachableDestinations(state, actor);
             if (!reachable.ContainsKey(destination))
+            {
+                if (state.LivingUnits.Any(unit =>
+                        !ReferenceEquals(unit, actor) && unit.Position == destination))
+                {
+                    return Failed(DestinationOccupiedError);
+                }
+
                 return Failed(DestinationUnreachableError);
+            }
 
             actor.MoveTo(destination);
             return Succeeded(SuccessMoveMessage, actor.Id);
