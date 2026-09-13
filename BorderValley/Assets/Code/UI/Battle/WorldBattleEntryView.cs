@@ -10,6 +10,7 @@ namespace BorderValley.UI.Battle
     public sealed class WorldBattleEntryView : MonoBehaviour
     {
         private IBattleFlow flow;
+        private bool battleStarted;
         private ISceneLoader loader;
 
         public Button BattleButton { get; private set; }
@@ -46,6 +47,11 @@ namespace BorderValley.UI.Battle
 
         private void StartBattle()
         {
+            if (battleStarted)
+                return;
+
+            battleStarted = true;
+            BattleButton.interactable = false;
             flow.BeginBattle(new BattleRequest("core", "vertical-slice", "World"));
             _ = loader.LoadAsync("Battle");
         }

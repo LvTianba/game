@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using BorderValley.Battle.Domain;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
+using BorderValley.Core.SceneManagement;
 using BorderValley.UI.Battle;
 using NUnit.Framework;
 using UnityEngine;
@@ -63,6 +64,37 @@ namespace BorderValley.PlayModeTests
             Assert.That(entry, Is.Not.Null);
             Assert.That(entry.ResultLabel.text, Is.Empty);
             Assert.That(flow.TryTakeResult(out _), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator WorldBattleEntry_DoubleTap_BeginsOneBattleAndLoad()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            yield return WaitForScene("MainMenu");
+
+            var originalLoader = GameBootstrapper.Context.Get<ISceneLoader>();
+            var loader = new RecordingSceneLoader();
+            GameBootstrapper.Context.Register<ISceneLoader>(loader);
+
+            yield return SceneManager.LoadSceneAsync("World");
+            yield return null;
+
+            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
+            Assert.That(entry, Is.Not.Null);
+
+            entry.BattleButton.onClick.Invoke();
+            entry.BattleButton.onClick.Invoke();
+
+            Assert.That(entry.BattleButton.interactable, Is.False);
+            Assert.That(loader.LoadCount, Is.EqualTo(1));
+
+            var flow = GameBootstrapper.Context.Get<IBattleFlow>();
+            Assert.That(flow.TryTakeRequest(out var request), Is.True);
+            Assert.That(request.ScenarioId, Is.EqualTo("core"));
+            Assert.That(flow.TryTakeRequest(out _), Is.False);
+
+            GameBootstrapper.Context.Register<ISceneLoader>(originalLoader);
         }
 
         [UnityTest]
@@ -231,6 +263,18 @@ namespace BorderValley.PlayModeTests
             Assert.That(controller.EnemyActionCount, Is.EqualTo(1));
             Assert.That(controller.IsEnemyTurnLoopActive, Is.False);
             Assert.That(controller.LastEnemyErrorKey, Is.EqualTo(BattleTextKeys.AiException));
+        }
+
+        private sealed class RecordingSceneLoader : ISceneLoader
+        {
+            public int LoadCount { get; private set; }
+            public string ActiveSceneName => SceneManager.GetActiveScene().name;
+
+            public System.Threading.Tasks.Task LoadAsync(string sceneName)
+            {
+                LoadCount++;
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
         }
 
         private static Rect GetWorldRect(RectTransform rect)
