@@ -35,7 +35,6 @@ namespace BorderValley.Battle.Domain
             if (random == null) throw new ArgumentNullException(nameof(random));
 
             var engine = scenario.CreateEngine(random);
-            engine.Start();
             return RunUntilComplete(engine, scenario, maxCommands);
         }
 
@@ -49,7 +48,8 @@ namespace BorderValley.Battle.Domain
             if (!ReferenceEquals(engine.State, scenario.State))
                 throw new InvalidOperationException("BattleEngine and BattleScenario must share the same BattleState.");
 
-            return RunUntilCompleteCore(engine, scenario.GetSkillsForUnit, maxCommands);
+            ValidateScenarioMatchesEngine(engine, scenario);
+            return RunUntilCompleteCore(engine, maxCommands);
         }
 
         public static SimulationRecord RunUntilComplete(
@@ -67,22 +67,13 @@ namespace BorderValley.Battle.Domain
                     "BattleEngine must be configured with UnitSkills before simulation.");
             }
 
-            return RunUntilCompleteCore(
-                engine,
-                unitId =>
-                {
-                    if (!engine.State.TryGetUnit(unitId, out var unit))
-                        throw new ArgumentException($"Unknown unit ID: {unitId}", nameof(unitId));
-
-                    var sideSkills = unit.Team == Team.Player ? playerSkills : enemySkills;
-                    return FilterOwnedSkills(engine, unitId, sideSkills);
-                },
-                maxCommands);
+            ValidateCatalogMatchesEngine(engine, playerSkills, Team.Player, nameof(playerSkills));
+            ValidateCatalogMatchesEngine(engine, enemySkills, Team.Enemy, nameof(enemySkills));
+            return RunUntilCompleteCore(engine, maxCommands);
         }
 
         private static SimulationRecord RunUntilCompleteCore(
             BattleEngine engine,
-            Func<string, IReadOnlyDictionary<string, SkillDefinition>> skillsForUnit,
             int maxCommands)
         {
             if (maxCommands <= 0)
@@ -97,7 +88,7 @@ namespace BorderValley.Battle.Domain
                 if (actor == null)
                     throw new InvalidOperationException("Battle has no active unit.");
 
-                var skills = skillsForUnit(actor.Id);
+                var skills = engine.GetSkillsForUnitById(actor.Id);
                 var command = BattleAi.ChooseCommand(engine, actor.Id, skills);
                 var result = engine.Execute(command);
                 if (!result.Success)
@@ -118,28 +109,74 @@ namespace BorderValley.Battle.Domain
             return new SimulationRecord(engine.Outcome, engine.State.Round, commands);
         }
 
-        private static IReadOnlyDictionary<string, SkillDefinition> FilterOwnedSkills(
+        private static void ValidateScenarioMatchesEngine(
             BattleEngine engine,
-            string unitId,
-            IReadOnlyDictionary<string, SkillDefinition> skills)
+            BattleScenario scenario)
         {
-            var result = new Dictionary<string, SkillDefinition>(StringComparer.Ordinal);
+            foreach (var unit in engine.State.Units)
+            {
+                var engineSkills = engine.GetSkillsForUnitById(unit.Id);
+                var scenarioSkills = scenario.GetSkillsForUnit(unit.Id);
+                if (engineSkills.Count != scenarioSkills.Count)
+                {
+                    throw new InvalidOperationException(
+                        $"BattleScenario skill ownership for unit '{unit.Id}' does not match the BattleEngine.");
+                }
+
+                foreach (var pair in engineSkills)
+                {
+                    if (!scenarioSkills.TryGetValue(pair.Key, out var supplied) ||
+                        !ReferenceEquals(pair.Value, supplied))
+                    {
+                        throw new InvalidOperationException(
+                            $"BattleScenario skill definition '{pair.Key}' for unit '{unit.Id}' does not match the BattleEngine-owned definition.");
+                    }
+                }
+            }
+        }
+
+        private static void ValidateCatalogMatchesEngine(
+            BattleEngine engine,
+            IReadOnlyDictionary<string, SkillDefinition> skills,
+            Team team,
+            string parameterName)
+        {
             foreach (var pair in skills)
             {
+                if (string.IsNullOrWhiteSpace(pair.Key))
+                    throw new ArgumentException("Skill IDs cannot be empty.", parameterName);
                 if (pair.Value == null)
-                    throw new ArgumentException("Skill definitions cannot contain null.", nameof(skills));
+                    throw new ArgumentException("Skill definitions cannot contain null.", parameterName);
                 if (!string.Equals(pair.Key, pair.Value.Id, StringComparison.Ordinal))
                 {
                     throw new ArgumentException(
                         $"Skill dictionary key '{pair.Key}' must match SkillDefinition.Id '{pair.Value.Id}'.",
-                        nameof(skills));
+                        parameterName);
                 }
-
-                if (engine.OwnsSkill(unitId, pair.Key))
-                    result.Add(pair.Key, pair.Value);
+                if (!engine.TryGetSkillDefinition(pair.Key, out var authoritative))
+                {
+                    throw new InvalidOperationException(
+                        $"Skill definition '{pair.Key}' is not configured in the BattleEngine.");
+                }
+                if (!ReferenceEquals(authoritative, pair.Value))
+                {
+                    throw new InvalidOperationException(
+                        $"Skill definition '{pair.Key}' in {parameterName} does not match the BattleEngine-owned definition.");
+                }
             }
 
-            return result;
+            foreach (var unit in engine.State.Units.Where(unit => unit.Team == team))
+            {
+                foreach (var pair in engine.GetSkillsForUnitById(unit.Id))
+                {
+                    if (!skills.TryGetValue(pair.Key, out var supplied) ||
+                        !ReferenceEquals(pair.Value, supplied))
+                    {
+                        throw new InvalidOperationException(
+                            $"Skill definition '{pair.Key}' for unit '{unit.Id}' is missing or does not match the BattleEngine-owned definition.");
+                    }
+                }
+            }
         }
 
         private static string Format(BattleCommand command)

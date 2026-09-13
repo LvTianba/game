@@ -154,6 +154,103 @@ namespace BorderValley.Battle.Tests
         }
 
         [Test]
+        public void BattleEngine_GetSkillsForUnitById_ReturnsConfiguredInstances()
+        {
+            var scenario = BattleScenarioFactory.CreateCoreScenario();
+            var engine = scenario.CreateEngine(RandomSourceFactory.FromSeed("authoritative-skills"));
+
+            var owned = engine.GetSkillsForUnitById("player.mage");
+
+            Assert.That(owned.Keys, Is.EquivalentTo(new[]
+            {
+                "skill.fireball",
+                "skill.frost_nova",
+                "skill.arcane_ward",
+                "skill.basic"
+            }));
+            Assert.That(ReferenceEquals(owned["skill.fireball"], scenario.AllSkills["skill.fireball"]), Is.True);
+            Assert.That(ReferenceEquals(
+                engine.GetOwnedSkills("player.mage")["skill.fireball"],
+                scenario.AllSkills["skill.fireball"]), Is.True);
+        }
+
+        [Test]
+        public void Simulator_CompatibilityEntry_RejectsDefinitionCopiesWithoutMutation()
+        {
+            var scenario = BattleScenarioFactory.CreateCoreScenario();
+            var engine = scenario.CreateEngine(RandomSourceFactory.FromSeed("definition-copy"));
+            var playerSkills = scenario.PlayerSkills.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.Ordinal);
+            playerSkills["skill.fireball"] = CopyWithDifferentConfiguration(
+                scenario.AllSkills["skill.fireball"]);
+            var before = Snapshot(engine.State);
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                BattleSimulator.RunUntilComplete(
+                    engine,
+                    playerSkills,
+                    scenario.EnemySkills,
+                    maxCommands: 20));
+
+            Assert.That(exception.Message, Does.Contain("BattleEngine"));
+            Assert.That(engine.ActiveUnit, Is.Null);
+            Assert.That(engine.Outcome, Is.EqualTo(BattleOutcome.InProgress));
+            Assert.That(Snapshot(engine.State), Is.EqualTo(before));
+        }
+
+        [Test]
+        public void Simulator_CompatibilityEntry_UsesEngineAuthorityWithMatchingDefinitions()
+        {
+            var scenario = BattleScenarioFactory.CreateCoreScenario();
+            var engine = scenario.CreateEngine(RandomSourceFactory.FromSeed("compatible-authority"));
+
+            var result = BattleSimulator.RunUntilComplete(
+                engine,
+                scenario.PlayerSkills,
+                scenario.EnemySkills,
+                maxCommands: 200);
+
+            Assert.That(result.Outcome, Is.Not.EqualTo(BattleOutcome.InProgress));
+            Assert.That(result.Rounds, Is.LessThanOrEqualTo(30));
+            Assert.That(result.Commands, Is.Not.Empty);
+        }
+
+        [Test]
+        public void Simulator_ScenarioEntry_RejectsMismatchedDefinitionInstancesWithoutMutation()
+        {
+            var scenario = BattleScenarioFactory.CreateCoreScenario();
+            var engine = scenario.CreateEngine(RandomSourceFactory.FromSeed("scenario-copy"));
+            var playerSkills = scenario.PlayerSkills.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.Ordinal);
+            var enemySkills = scenario.EnemySkills.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.Ordinal);
+            var copiedFireball = CopyWithDifferentConfiguration(
+                scenario.AllSkills["skill.fireball"]);
+            playerSkills["skill.fireball"] = copiedFireball;
+            enemySkills["skill.fireball"] = copiedFireball;
+            var mismatchedScenario = new BattleScenario(
+                scenario.State,
+                playerSkills,
+                enemySkills,
+                scenario.UnitSkills);
+            var before = Snapshot(engine.State);
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                BattleSimulator.RunUntilComplete(engine, mismatchedScenario, maxCommands: 20));
+
+            Assert.That(exception.Message, Does.Contain("BattleEngine"));
+            Assert.That(engine.ActiveUnit, Is.Null);
+            Assert.That(engine.Outcome, Is.EqualTo(BattleOutcome.InProgress));
+            Assert.That(Snapshot(engine.State), Is.EqualTo(before));
+        }
+
+        [Test]
         public void CoreScenario_AreaSkillsUseRadiusAnchorsAndFactionFiltering()
         {
             var scenario = BattleScenarioFactory.CreateCoreScenario();
@@ -253,7 +350,7 @@ namespace BorderValley.Battle.Tests
             while (engine.Outcome == BattleOutcome.InProgress && commandCount < 200)
             {
                 var actor = engine.ActiveUnit;
-                var skills = scenario.GetSkillsForUnit(actor.Id);
+                var skills = engine.GetSkillsForUnitById(actor.Id);
                 var command = BattleAi.ChooseCommand(engine, actor.Id, skills);
                 var result = engine.Execute(command);
 
@@ -422,6 +519,30 @@ namespace BorderValley.Battle.Tests
                 team,
                 new UnitStats(30, 10, power, 0, 5, 0f, 0),
                 new GridPosition(x, y));
+        }
+
+        private static SkillDefinition CopyWithDifferentConfiguration(SkillDefinition source)
+        {
+            var effects = source.Effects.Select(effect => new SkillEffectDefinition(
+                effect.Kind,
+                effect.Kind == SkillEffectKind.Damage
+                    ? effect.PowerMultiplier + 0.1f
+                    : effect.PowerMultiplier,
+                effect.StatusType,
+                effect.Magnitude,
+                effect.Duration,
+                effect.DamageType,
+                effect.ArmorPenetration)).ToArray();
+
+            return new SkillDefinition(
+                source.Id,
+                source.LocalizationKey + ".copy",
+                source.Targeting,
+                source.Range + 1,
+                source.Radius + 1,
+                source.Mana,
+                source.Cooldown,
+                effects);
         }
 
         private static SkillEffectDefinition AssertEffect(

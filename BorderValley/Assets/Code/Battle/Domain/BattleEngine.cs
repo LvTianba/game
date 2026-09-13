@@ -70,6 +70,27 @@ namespace BorderValley.Battle.Domain
                    owned.Contains(skillId);
         }
 
+        public IReadOnlyDictionary<string, SkillDefinition> GetSkillsForUnitById(string unitId)
+        {
+            if (string.IsNullOrWhiteSpace(unitId) || !state.TryGetUnit(unitId, out _))
+                throw new ArgumentException($"Unknown unit ID: {unitId}", nameof(unitId));
+
+            var result = new Dictionary<string, SkillDefinition>(StringComparer.Ordinal);
+            if (!ownedSkillIds.TryGetValue(unitId, out var owned))
+                return result;
+
+            foreach (var skillId in owned)
+                result.Add(skillId, skills[skillId]);
+
+            return result;
+        }
+
+        public IReadOnlyDictionary<string, SkillDefinition> GetOwnedSkills(string unitId) =>
+            GetSkillsForUnitById(unitId);
+
+        internal bool TryGetSkillDefinition(string skillId, out SkillDefinition skill) =>
+            skills.TryGetValue(skillId, out skill);
+
         public void Start()
         {
             if (turnEngine.ActiveUnit != null)
