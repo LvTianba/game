@@ -14,6 +14,7 @@ namespace BorderValley.Core
         public static bool StartupBlocked { get; private set; }
 
         [SerializeField] private MonoBehaviour[] preflightChecks = System.Array.Empty<MonoBehaviour>();
+        [SerializeField] private MonoBehaviour[] serviceInstallers = System.Array.Empty<MonoBehaviour>();
 
         private void Awake()
         {
@@ -24,7 +25,17 @@ namespace BorderValley.Core
             Context = new GameContext();
             Context.Register<ISceneLoader>(new UnitySceneLoader());
             Context.Register<IBattleFlow>(new BattleFlowService());
-            Context.Register(new SaveService(Application.persistentDataPath, System.Array.Empty<ISaveParticipant>()));
+
+            var participants = new List<ISaveParticipant>();
+            foreach (var candidate in serviceInstallers)
+            {
+                if (candidate is IGameServiceInstaller installer)
+                {
+                    installer.Install(Context, participants);
+                }
+            }
+
+            Context.Register(new SaveService(Application.persistentDataPath, participants));
         }
 
         private void Start()
