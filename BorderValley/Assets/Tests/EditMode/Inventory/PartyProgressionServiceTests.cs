@@ -153,7 +153,7 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
-        public void Restore_SkipsUnknownCharacterAndInvalidLevelWithoutReplacingState()
+        public void Restore_WithUnknownCharacterOrInvalidLevel_Throws()
         {
             var progression = Progression();
             var originalHealth = progression.Members[0].CurrentHealth;
@@ -185,11 +185,11 @@ namespace BorderValley.Inventory.Tests
                     }
                 }
             };
-            progression.Restore(state);
+            Assert.Throws<System.InvalidOperationException>(() => progression.Restore(state));
             Assert.That(progression.Members.All(member => member.Level == 1), Is.True);
             Assert.That(progression.Members[0].CurrentHealth, Is.EqualTo(originalHealth));
             Assert.That(progression.Members.All(member => member.SkillPoints == 0), Is.True);
-            Assert.That(progression.SafePointId, Is.EqualTo("world.camp"));
+            Assert.That(progression.SafePointId, Is.EqualTo(PartyProgressionService.DefaultSafePointId));
         }
 
         private static PartyProgressionService Progression(IEnumerable<PartyMemberState> members = null)

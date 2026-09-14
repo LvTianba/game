@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 
 namespace BorderValley.Inventory
 {
-    public sealed class InventoryService : ISaveParticipant
+    public sealed class InventoryService : ISaveParticipant, ISaveParticipantPostRestore
     {
         private const string LegacyMemberId = "__legacy";
         private static readonly IReadOnlyDictionary<ItemSlot, string> EmptyEquipment =
@@ -175,30 +175,106 @@ namespace BorderValley.Inventory
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             Reset();
-            Gold = Math.Max(0, state.Value<int>("gold"));
-            foreach (var pair in state["materials"]?.ToObject<Dictionary<string, int>>() ?? new())
-                materials[pair.Key] = Math.Max(0, pair.Value);
-            foreach (var token in state["items"] as JArray ?? new JArray())
+
+            var goldToken = state["gold"];
+            if (goldToken == null || goldToken.Type != JTokenType.Integer)
+                throw new InvalidOperationException("Save contains malformed inventory gold.");
+            var gold = goldToken.Value<int>();
+            if (gold < 0)
+                throw new InvalidOperationException("Save contains negative inventory gold.");
+            Gold = gold;
+
+            if (state["materials"] is JObject materialsState)
             {
-                var item = FromJson((JObject)token);
-                if (Definitions.ContainsKey(item.ItemDefinitionId))
-                    items[item.InstanceId] = item;
+                foreach (var property in materialsState.Properties())
+                {
+                    if (string.IsNullOrWhiteSpace(property.Name) ||
+                        property.Value.Type != JTokenType.Integer ||
+                        property.Value.Value<int>() < 0)
+                        throw new InvalidOperationException("Save contains malformed inventory materials.");
+                    materials[property.Name] = property.Value.Value<int>();
+                }
+            }
+            else if (state["materials"] != null && state["materials"].Type != JTokenType.Null)
+            {
+                throw new InvalidOperationException("Save contains malformed inventory materials.");
+            }
+
+            if (state["items"] is JArray itemState)
+            {
+                foreach (var token in itemState)
+                {
+                    if (!(token is JObject itemObject))
+                        throw new InvalidOperationException("Save contains a malformed inventory item.");
+                    RestoreItem(itemObject);
+                }
+            }
+            else if (state["items"] != null && state["items"].Type != JTokenType.Null)
+            {
+                throw new InvalidOperationException("Save contains malformed inventory items.");
             }
 
             var loadedByMember = false;
-            if (state["equippedByMember"] is JObject byMember)
+            if (state["equippedByMember"] != null && state["equippedByMember"].Type != JTokenType.Null)
             {
+                if (!(state["equippedByMember"] is JObject byMember))
+                    throw new InvalidOperationException("Save contains malformed member equipment.");
                 foreach (var property in byMember.Properties())
                 {
-                    if (!(property.Value is JObject loadout)) continue;
+                    if (string.IsNullOrWhiteSpace(property.Name) || !(property.Value is JObject loadout))
+                        throw new InvalidOperationException("Save contains a malformed member loadout.");
                     RestoreLoadout(property.Name, loadout);
                     loadedByMember = true;
                 }
             }
 
-            if (!loadedByMember && state["equipped"] is JObject legacy)
+            if (!loadedByMember && state["equipped"] != null && state["equipped"].Type != JTokenType.Null)
+            {
+                if (!(state["equipped"] is JObject legacy))
+                    throw new InvalidOperationException("Save contains malformed legacy equipment.");
                 RestoreLoadout(LegacyMemberId, legacy);
+            }
 
+            Changed?.Invoke();
+        }
+
+        public void CompleteRestore(IReadOnlyDictionary<string, ISaveParticipant> participants)
+        {
+            var progression = participants.Values.OfType<PartyProgressionService>().FirstOrDefault();
+            if (progression == null) return;
+
+            ValidateMemberLoadouts(progression);
+            if (!equippedByMember.TryGetValue(LegacyMemberId, out var legacy)) return;
+            if (equippedByMember.Keys.Any(key => key != LegacyMemberId))
+            {
+                equippedByMember.Remove(LegacyMemberId);
+                return;
+            }
+
+            foreach (var pair in legacy
+                         .OrderBy(value => value.Key)
+                         .ThenBy(value => value.Value, StringComparer.Ordinal))
+            {
+                if (!items.TryGetValue(pair.Value, out var item))
+                    throw new InvalidOperationException("Legacy equipment references an item that is not in the bag.");
+                if (!Definitions.TryGetValue(item.ItemDefinitionId, out var definition))
+                    throw new InvalidOperationException("Legacy equipment references an unknown item definition.");
+
+                var candidates = progression.Members
+                    .Where(member => definition.AllowsClass(member.CharacterId))
+                    .OrderBy(member => member.MemberId, StringComparer.Ordinal)
+                    .ToArray();
+                if (candidates.Length == 0)
+                    throw new InvalidOperationException("Legacy equipment has no compatible party member.");
+
+                var target = candidates.FirstOrDefault(member =>
+                                 !GetEquipped(member.MemberId).ContainsKey(pair.Key)) ??
+                             candidates[0];
+                var loadout = GetOrCreateLoadout(target.MemberId);
+                loadout[pair.Key] = pair.Value;
+            }
+
+            equippedByMember.Remove(LegacyMemberId);
             Changed?.Invoke();
         }
 
@@ -215,11 +291,17 @@ namespace BorderValley.Inventory
 
         private void RestoreLoadout(string memberId, JObject loadout)
         {
+            if (loadout == null) throw new InvalidOperationException("Save contains a null loadout.");
             var normalizedMemberId = NormalizeMemberId(memberId);
             var restored = new Dictionary<ItemSlot, string>();
             foreach (var property in loadout.Properties())
             {
-                if (!Enum.TryParse<ItemSlot>(property.Name, out var slot)) continue;
+                if (!Enum.TryParse<ItemSlot>(property.Name, out var slot) ||
+                    !Enum.IsDefined(typeof(ItemSlot), slot))
+                    throw new InvalidOperationException("Save contains an unknown equipment slot.");
+                if (property.Value.Type != JTokenType.String)
+                    throw new InvalidOperationException("Save contains a malformed equipped item reference.");
+
                 var instanceId = property.Value.Value<string>();
                 if (string.IsNullOrWhiteSpace(instanceId) || !items.ContainsKey(instanceId))
                     throw new InvalidOperationException("Save contains an equipped item that is not in the bag.");
@@ -230,6 +312,88 @@ namespace BorderValley.Inventory
 
             if (restored.Count > 0)
                 equippedByMember[normalizedMemberId] = restored;
+        }
+
+        private void RestoreItem(JObject value)
+        {
+            var instanceId = value.Value<string>("instanceId");
+            var definitionId = value.Value<string>("definitionId");
+            var itemLevelToken = value["itemLevel"];
+            var rarityToken = value["rarity"];
+            if (string.IsNullOrWhiteSpace(instanceId) ||
+                string.IsNullOrWhiteSpace(definitionId) ||
+                itemLevelToken == null ||
+                itemLevelToken.Type != JTokenType.Integer ||
+                itemLevelToken.Value<int>() < 1 ||
+                itemLevelToken.Value<int>() > 10 ||
+                rarityToken == null ||
+                rarityToken.Type != JTokenType.String ||
+                !Enum.TryParse<ItemRarity>(rarityToken.Value<string>(), out var rarity) ||
+                !Enum.IsDefined(typeof(ItemRarity), rarity))
+                throw new InvalidOperationException("Save contains a malformed inventory item.");
+
+            if (!Definitions.ContainsKey(definitionId))
+                throw new InvalidOperationException("Save contains an item with an unknown definition.");
+            if (items.ContainsKey(instanceId))
+                throw new InvalidOperationException("Save contains duplicate item instances.");
+
+            var affixes = new List<AffixInstance>();
+            var affixToken = value["affixes"];
+            if (affixToken != null && affixToken.Type != JTokenType.Null)
+            {
+                if (!(affixToken is JArray affixArray))
+                    throw new InvalidOperationException("Save contains malformed item affixes.");
+                foreach (var affixTokenValue in affixArray)
+                {
+                    if (!(affixTokenValue is JObject affix) ||
+                        string.IsNullOrWhiteSpace(affix.Value<string>("id")) ||
+                        affix["value"] == null ||
+                        affix["value"].Type != JTokenType.Integer)
+                        throw new InvalidOperationException("Save contains a malformed item affix.");
+                    affixes.Add(new AffixInstance(affix.Value<string>("id"), affix.Value<int>("value")));
+                }
+            }
+
+            items[instanceId] = new ItemInstance(
+                instanceId,
+                definitionId,
+                itemLevelToken.Value<int>(),
+                rarity,
+                affixes);
+        }
+
+        private void ValidateMemberLoadouts(PartyProgressionService progression)
+        {
+            var members = progression.Members.ToDictionary(
+                member => member.MemberId,
+                member => member,
+                StringComparer.Ordinal);
+            foreach (var loadoutPair in equippedByMember)
+            {
+                if (loadoutPair.Key == LegacyMemberId) continue;
+                if (!members.TryGetValue(loadoutPair.Key, out var member))
+                    throw new InvalidOperationException("Save contains equipment for an unknown party member.");
+                foreach (var itemPair in loadoutPair.Value)
+                {
+                    if (!items.TryGetValue(itemPair.Value, out var item))
+                        throw new InvalidOperationException("Save contains an equipped item that is not in the bag.");
+                    if (!Definitions.TryGetValue(item.ItemDefinitionId, out var definition) ||
+                        definition.Slot != itemPair.Key ||
+                        !definition.AllowsClass(member.CharacterId))
+                        throw new InvalidOperationException("Save contains equipment that is invalid for its party member.");
+                }
+            }
+        }
+
+        private Dictionary<ItemSlot, string> GetOrCreateLoadout(string memberId)
+        {
+            var normalizedMemberId = NormalizeMemberId(memberId);
+            if (!equippedByMember.TryGetValue(normalizedMemberId, out var loadout))
+            {
+                loadout = new Dictionary<ItemSlot, string>();
+                equippedByMember[normalizedMemberId] = loadout;
+            }
+            return loadout;
         }
 
         private static string NormalizeMemberId(string memberId) =>
@@ -247,13 +411,5 @@ namespace BorderValley.Inventory
                 ["value"] = affix.Value
             }))
         };
-
-        private static ItemInstance FromJson(JObject value) => new(
-            value.Value<string>("instanceId"),
-            value.Value<string>("definitionId"),
-            value.Value<int>("itemLevel"),
-            Enum.Parse<ItemRarity>(value.Value<string>("rarity")),
-            (value["affixes"] as JArray ?? new JArray()).Select(affix => new AffixInstance(
-                affix.Value<string>("id"), affix.Value<int>("value"))));
     }
 }

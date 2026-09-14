@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
 namespace BorderValley.Core.Persistence
@@ -9,5 +10,10 @@ namespace BorderValley.Core.Persistence
         void Restore(JObject state);
         void RestoreContext(string sceneName);
         void Reset();
+    }
+
+    public interface ISaveParticipantPostRestore
+    {
+        void CompleteRestore(IReadOnlyDictionary<string, ISaveParticipant> participants);
     }
 }

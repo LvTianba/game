@@ -184,58 +184,105 @@ namespace BorderValley.Inventory
         public void Restore(JObject state)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
-            var changed = false;
-            var safePoint = state.Value<string>("safePointId");
-            if (!string.IsNullOrWhiteSpace(safePoint) && SafePointId != safePoint)
-            {
-                SafePointId = safePoint;
-                changed = true;
-            }
+            if (!(state["members"] is JArray savedMembers))
+                throw new InvalidOperationException("Save contains malformed party members.");
 
-            foreach (var token in state["members"] as JArray ?? new JArray())
-            {
-                if (!(token is JObject saved)) continue;
-                var memberId = saved.Value<string>("memberId");
-                var characterId = saved.Value<string>("characterId");
-                var level = saved.Value<int>("level");
-                if (string.IsNullOrWhiteSpace(memberId) ||
-                    string.IsNullOrWhiteSpace(characterId) ||
-                    level < 1 || level > MaxLevel ||
-                    !characters.ContainsKey(characterId))
-                    continue;
+            var safePointToken = state["safePointId"];
+            if (safePointToken != null &&
+                safePointToken.Type != JTokenType.Null &&
+                safePointToken.Type != JTokenType.String)
+                throw new InvalidOperationException("Save contains a malformed safe point.");
+            var safePoint = safePointToken?.Value<string>();
+            if (safePointToken != null &&
+                safePointToken.Type != JTokenType.Null &&
+                string.IsNullOrWhiteSpace(safePoint))
+                throw new InvalidOperationException("Save contains a malformed safe point.");
 
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var parsed = new List<(PartyMemberState Member, int Level, int Experience, int SkillPoints, int CurrentHealth, int CurrentMana, Dictionary<string, int> SkillRanks)>();
+            foreach (var token in savedMembers)
+            {
+                if (!(token is JObject saved))
+                    throw new InvalidOperationException("Save contains a malformed party member.");
+
+                var memberIdToken = saved["memberId"];
+                var characterIdToken = saved["characterId"];
+                var levelToken = saved["level"];
+                if (memberIdToken == null ||
+                    memberIdToken.Type != JTokenType.String ||
+                    characterIdToken == null ||
+                    characterIdToken.Type != JTokenType.String ||
+                    string.IsNullOrWhiteSpace(memberIdToken.Value<string>()) ||
+                    string.IsNullOrWhiteSpace(characterIdToken.Value<string>()) ||
+                    levelToken == null ||
+                    levelToken.Type != JTokenType.Integer)
+                    throw new InvalidOperationException("Save contains a malformed party member identity.");
+
+                var memberId = memberIdToken.Value<string>();
+                var characterId = characterIdToken.Value<string>();
+                var level = levelToken.Value<int>();
+                if (level < 1 || level > MaxLevel || !characters.TryGetValue(characterId, out var character))
+                    throw new InvalidOperationException("Save contains an invalid party member level or class.");
                 var member = members.FirstOrDefault(value => value.MemberId == memberId);
                 if (member == null || !string.Equals(member.CharacterId, characterId, StringComparison.Ordinal))
-                    continue;
+                    throw new InvalidOperationException("Save contains an unknown or mismatched party member.");
+                if (!seen.Add(memberId))
+                    throw new InvalidOperationException("Save contains duplicate party members.");
 
-                member.Level = level;
-                member.Experience = Math.Max(0, saved.Value<int>("experience"));
-                member.SkillPoints = Math.Max(0, saved.Value<int>("skillPoints"));
-                member.CurrentHealth = Math.Max(1, saved.Value<int>("currentHealth"));
-                member.CurrentMana = Math.Max(0, saved.Value<int>("currentMana"));
-                member.SkillRanks.Clear();
-                var character = characters[characterId];
-                if (saved["skillRanks"] is JObject ranks)
+                var experience = RequireNonNegativeInt(saved, "experience");
+                var skillPoints = RequireNonNegativeInt(saved, "skillPoints");
+                var currentHealth = RequireNonNegativeInt(saved, "currentHealth");
+                var currentMana = RequireNonNegativeInt(saved, "currentMana");
+                if (currentHealth < 1)
+                    throw new InvalidOperationException("Save contains invalid party member health.");
+
+                var ranks = new Dictionary<string, int>(StringComparer.Ordinal);
+                if (saved["skillRanks"] != null && saved["skillRanks"].Type != JTokenType.Null)
                 {
-                    foreach (var pair in ranks)
+                    if (!(saved["skillRanks"] is JObject skillRanks))
+                        throw new InvalidOperationException("Save contains malformed skill ranks.");
+                    foreach (var pair in skillRanks)
                     {
-                        if (!IsSkillUnlocked(character, level, pair.Key)) continue;
-                        member.SkillRanks[pair.Key] = Math.Clamp(pair.Value.Value<int>(), 0, MaxSkillRank);
+                        if (pair.Value.Type != JTokenType.Integer)
+                            throw new InvalidOperationException("Save contains a malformed skill rank.");
+                        var rank = pair.Value.Value<int>();
+                        if (rank < 0 || rank > MaxSkillRank ||
+                            !IsSkillUnlocked(character, level, pair.Key))
+                            throw new InvalidOperationException("Save contains an invalid skill rank.");
+                        ranks[pair.Key] = rank;
                     }
                 }
-                changed = true;
+
+                parsed.Add((member, level, experience, skillPoints, currentHealth, currentMana, ranks));
             }
 
+            if (parsed.Count != members.Count || members.Any(member => !seen.Contains(member.MemberId)))
+                throw new InvalidOperationException("Save does not contain every party member exactly once.");
+
             var savedPendingWipe = state["hasPendingWipeReturn"];
-            var pendingWipe = savedPendingWipe == null || savedPendingWipe.Type == JTokenType.Null
+            if (savedPendingWipe != null &&
+                savedPendingWipe.Type != JTokenType.Null &&
+                savedPendingWipe.Type != JTokenType.Boolean)
+                throw new InvalidOperationException("Save contains a malformed wipe state.");
+
+            if (!string.IsNullOrWhiteSpace(safePoint))
+                SafePointId = safePoint;
+            foreach (var value in parsed)
+            {
+                value.Member.Level = value.Level;
+                value.Member.Experience = value.Experience;
+                value.Member.SkillPoints = value.SkillPoints;
+                value.Member.CurrentHealth = value.CurrentHealth;
+                value.Member.CurrentMana = value.CurrentMana;
+                value.Member.SkillRanks.Clear();
+                foreach (var rank in value.SkillRanks)
+                    value.Member.SkillRanks[rank.Key] = rank.Value;
+            }
+
+            HasPendingWipeReturn = savedPendingWipe == null || savedPendingWipe.Type == JTokenType.Null
                 ? members.Count > 0 && members.All(member => member.CurrentHealth <= 1)
                 : savedPendingWipe.Value<bool>();
-            if (HasPendingWipeReturn != pendingWipe)
-            {
-                HasPendingWipeReturn = pendingWipe;
-                changed = true;
-            }
-            if (changed) Changed?.Invoke();
+            Changed?.Invoke();
         }
 
         public void RestoreContext(string sceneName) { }
@@ -256,6 +303,14 @@ namespace BorderValley.Inventory
             if (member == null || !characters.TryGetValue(member.CharacterId, out var character))
                 return Array.Empty<string>();
             return UnlockedSkillIds(character, member.Level);
+        }
+
+        private static int RequireNonNegativeInt(JObject state, string key)
+        {
+            var token = state[key];
+            if (token == null || token.Type != JTokenType.Integer || token.Value<int>() < 0)
+                throw new InvalidOperationException($"Save contains malformed {key}.");
+            return token.Value<int>();
         }
 
         private static List<PartyMemberState> Clone(IEnumerable<PartyMemberState> source) =>

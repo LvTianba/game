@@ -148,9 +148,17 @@ namespace BorderValley.Core.Persistence
                     foreach (var participant in participants.Values)
                     {
                         participant.Reset();
-                        if (data.Participants.TryGetValue(participant.Key, out var state))
-                            participant.Restore(state);
+                        if (!data.Participants.TryGetValue(participant.Key, out var state))
+                            throw new InvalidOperationException(
+                                "Save is missing participant: " + participant.Key);
+                        participant.Restore(state);
                         participant.RestoreContext(data.SceneName);
+                    }
+
+                    foreach (var participant in participants.Values)
+                    {
+                        if (participant is ISaveParticipantPostRestore postRestore)
+                            postRestore.CompleteRestore(participants);
                     }
 
                     return true;
