@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BorderValley.Core;
 using BorderValley.Core.Boot;
+using BorderValley.Core.Combat;
 using BorderValley.Core.Persistence;
 using BorderValley.Data;
 using BorderValley.Data.Items;
@@ -18,6 +19,7 @@ namespace BorderValley.Inventory
 
             var items = new Dictionary<string, ItemDefinition>(StringComparer.Ordinal);
             var characters = new Dictionary<string, CharacterDefinition>(StringComparer.Ordinal);
+            var affixes = new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
             var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
             if (catalog != null)
             {
@@ -31,15 +33,47 @@ namespace BorderValley.Inventory
                         case CharacterDefinition character:
                             characters[character.Id] = character;
                             break;
+                        case AffixDefinition affix:
+                            affixes[affix.Id] = affix;
+                            break;
                     }
                 }
             }
 
             var inventory = new InventoryService(30, items, 100);
+            var progression = new PartyProgressionService(characters, CreateInitialParty(characters));
+            var snapshotBuilder = new PartyBattleSnapshotBuilder(progression, inventory, items, affixes);
             context.Register(inventory);
+            context.Register(progression);
+            context.Register(snapshotBuilder);
             context.Register<IReadOnlyDictionary<string, ItemDefinition>>(items);
             context.Register<IReadOnlyDictionary<string, CharacterDefinition>>(characters);
+            context.Register<IReadOnlyDictionary<string, AffixDefinition>>(affixes);
             participants.Add(inventory);
+            participants.Add(progression);
+        }
+
+        private static IEnumerable<PartyMemberState> CreateInitialParty(
+            IReadOnlyDictionary<string, CharacterDefinition> characters)
+        {
+            var members = new[]
+            {
+                (MemberId: "player.warrior", CharacterId: "class.warrior"),
+                (MemberId: "player.ranger", CharacterId: "class.ranger"),
+                (MemberId: "player.mage", CharacterId: "class.mage")
+            };
+            foreach (var member in members)
+            {
+                if (!characters.TryGetValue(member.CharacterId, out var character)) continue;
+                yield return new PartyMemberState(
+                    member.MemberId,
+                    member.CharacterId,
+                    1,
+                    0,
+                    0,
+                    character.GetBaseStat(CombatStat.MaxHealth, 1),
+                    character.GetBaseStat(CombatStat.MaxMana, 1));
+            }
         }
     }
 }
