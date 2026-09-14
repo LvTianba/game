@@ -62,45 +62,77 @@ namespace BorderValley.Inventory
                 _ => throw new ArgumentOutOfRangeException(nameof(rarity))
             };
 
-            var chosen = new List<AffixDefinition>();
             var eligible = affixes.Values
-                .Where(affix => affix != null && affix.Supports(item.Slot, rarity, itemLevel))
+                .Where(affix => affix != null && affix.Weight > 0 &&
+                                affix.Supports(item.Slot, rarity, itemLevel))
                 .OrderBy(affix => affix.Id, StringComparer.Ordinal)
                 .ToArray();
-
-            for (var index = 0; index < count; index++)
-            {
-                var candidates = eligible
-                    .Where(candidate => chosen.All(value => !Conflicts(value, candidate)))
-                    .ToArray();
-                if (candidates.Length == 0) break;
-                chosen.Add(Weighted(candidates, value => value.Weight, value => value, random));
-            }
-
-            if (rarity == ItemRarity.Epic &&
-                !chosen.Any(value => value.EffectKind is AffixEffectKind.SkillModifier or AffixEffectKind.Trigger))
-            {
-                var retained = chosen.Count == 0
-                    ? Array.Empty<AffixDefinition>()
-                    : chosen.Take(chosen.Count - 1).ToArray();
-                var special = eligible
-                    .Where(value => value.EffectKind is AffixEffectKind.SkillModifier or AffixEffectKind.Trigger)
-                    .Where(value => retained.All(existing => !Conflicts(existing, value)))
-                    .OrderBy(value => value.Id, StringComparer.Ordinal)
-                    .ToArray();
-                if (special.Length > 0)
-                {
-                    var value = Weighted(special, candidate => candidate.Weight, candidate => candidate, random);
-                    if (chosen.Count == 0)
-                        chosen.Add(value);
-                    else
-                        chosen[chosen.Count - 1] = value;
-                }
-            }
+            var chosen = SelectAffixes(eligible, count, rarity, random);
 
             return new ItemInstance(instanceId, item.Id, itemLevel, rarity, ApplyBudget(chosen, rarity, random));
         }
 
+        private static IReadOnlyList<AffixDefinition> SelectAffixes(
+            IReadOnlyList<AffixDefinition> eligible,
+            int count,
+            ItemRarity rarity,
+            IRandomSource random)
+        {
+            if (count == 0) return Array.Empty<AffixDefinition>();
+
+            var requiresSpecial = rarity == ItemRarity.Epic && eligible.Any(IsSpecial);
+            var chosen = new List<AffixDefinition>(count);
+            if (TrySelectAffixes(eligible, count, requiresSpecial, chosen, random))
+                return chosen.AsReadOnly();
+
+            throw new InvalidOperationException(
+                $"Unable to select {count} affixes for {rarity} from the eligible pool.");
+        }
+
+        private static bool TrySelectAffixes(
+            IReadOnlyList<AffixDefinition> eligible,
+            int count,
+            bool requiresSpecial,
+            List<AffixDefinition> chosen,
+            IRandomSource random)
+        {
+            if (chosen.Count == count)
+                return !requiresSpecial || chosen.Any(IsSpecial);
+
+            var remaining = count - chosen.Count;
+            var candidates = eligible
+                .Where(candidate => chosen.All(existing => !Conflicts(existing, candidate)))
+                .ToArray();
+            if (candidates.Length < remaining) return false;
+            if (requiresSpecial && !chosen.Any(IsSpecial) && !candidates.Any(IsSpecial))
+                return false;
+
+            foreach (var candidate in WeightedOrder(candidates, random))
+            {
+                chosen.Add(candidate);
+                if (TrySelectAffixes(eligible, count, requiresSpecial, chosen, random))
+                    return true;
+                chosen.RemoveAt(chosen.Count - 1);
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<AffixDefinition> WeightedOrder(
+            IReadOnlyList<AffixDefinition> candidates,
+            IRandomSource random)
+        {
+            var remaining = new List<AffixDefinition>(candidates);
+            while (remaining.Count > 0)
+            {
+                var value = Weighted(remaining, candidate => candidate.Weight, candidate => candidate, random);
+                yield return value;
+                remaining.Remove(value);
+            }
+        }
+
+        private static bool IsSpecial(AffixDefinition affix) =>
+            affix.EffectKind is AffixEffectKind.SkillModifier or AffixEffectKind.Trigger;
         private ItemDefinition ResolveItem(ItemDefinition item)
         {
             if (item == null) throw new InvalidOperationException("Loot entry has no item.");

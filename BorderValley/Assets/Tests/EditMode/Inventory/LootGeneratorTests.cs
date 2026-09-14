@@ -108,6 +108,115 @@ namespace BorderValley.Inventory.Tests
             }
         }
 
+        [TestCase(ItemRarity.Rare)]
+        [TestCase(ItemRarity.Epic)]
+        public void GenerateForItem_WhenExactAffixCountCannotBeMet_Throws(ItemRarity rarity)
+        {
+            var item = Item(ItemRarity.Epic);
+            var first = Affix("affix.first", ItemRarity.Common, AffixEffectKind.FlatStat, "affix.second");
+            var second = Affix("affix.second", ItemRarity.Common, AffixEffectKind.FlatStat, "affix.first");
+            var generator = GeneratorWithAffixes(item, first, second);
+
+            Assert.Throws<InvalidOperationException>(() => generator.GenerateForItem(
+                "drop", item, 10, rarity, RandomSourceFactory.FromSeed("seed")));
+        }
+
+        [Test]
+        public void GenerateForItem_EpicBacktracksToCompatibleSpecial()
+        {
+            var item = Item(ItemRarity.Epic);
+            var first = Affix("affix.a", ItemRarity.Common, AffixEffectKind.FlatStat);
+            var second = Affix("affix.b", ItemRarity.Common, AffixEffectKind.FlatStat);
+            var third = Affix("affix.c", ItemRarity.Common, AffixEffectKind.FlatStat);
+            var fourth = Affix("affix.d", ItemRarity.Common, AffixEffectKind.FlatStat);
+            var special = Affix(
+                "affix.special",
+                ItemRarity.Epic,
+                AffixEffectKind.SkillModifier,
+                "affix.a",
+                "affix.b");
+            var generator = GeneratorWithAffixes(item, first, second, third, fourth, special);
+
+            var result = generator.GenerateForItem(
+                "drop",
+                item,
+                10,
+                ItemRarity.Epic,
+                new RecordingRandomSource(0));
+
+            Assert.That(result.Affixes, Has.Count.EqualTo(3));
+            Assert.That(result.Affixes.Any(affix => affix.AffixId == "affix.special"), Is.True);
+        }
+
+        [TestCase(ItemRarity.Common, 0)]
+        [TestCase(ItemRarity.Fine, 1)]
+        [TestCase(ItemRarity.Rare, 2)]
+        [TestCase(ItemRarity.Epic, 3)]
+        public void GenerateForItem_ReturnsExplicitAffixCountForRarity(ItemRarity rarity, int expectedCount)
+        {
+            var item = Item(ItemRarity.Epic);
+            var generator = GeneratorWithAffixes(
+                item,
+                Affix("affix.a", ItemRarity.Common, AffixEffectKind.FlatStat),
+                Affix("affix.b", ItemRarity.Common, AffixEffectKind.FlatStat),
+                Affix("affix.c", ItemRarity.Common, AffixEffectKind.FlatStat),
+                Affix("affix.special", ItemRarity.Epic, AffixEffectKind.Trigger));
+
+            var result = generator.GenerateForItem(
+                "drop",
+                item,
+                10,
+                rarity,
+                RandomSourceFactory.FromSeed("count"));
+
+            Assert.That(result.Affixes, Has.Count.EqualTo(expectedCount));
+        }
+
+        [Test]
+        public void GenerateForItem_FiltersBySlotMinimumRarityAndItemLevel()
+        {
+            var item = Item(ItemRarity.Epic);
+            var eligible = Affix(
+                "affix.eligible",
+                ItemRarity.Fine,
+                AffixEffectKind.FlatStat,
+                ItemSlot.Weapon,
+                10);
+            var wrongSlot = Affix(
+                "affix.wrong-slot",
+                ItemRarity.Fine,
+                AffixEffectKind.FlatStat,
+                ItemSlot.Offhand,
+                1);
+            var wrongRarity = Affix(
+                "affix.wrong-rarity",
+                ItemRarity.Epic,
+                AffixEffectKind.FlatStat,
+                ItemSlot.Weapon,
+                1);
+            var wrongLevel = Affix(
+                "affix.wrong-level",
+                ItemRarity.Fine,
+                AffixEffectKind.FlatStat,
+                ItemSlot.Weapon,
+                11);
+            var generator = GeneratorWithAffixes(item, eligible, wrongSlot, wrongRarity, wrongLevel);
+
+            var result = generator.GenerateForItem(
+                "drop",
+                item,
+                10,
+                ItemRarity.Fine,
+                RandomSourceFactory.FromSeed("filter"));
+
+            Assert.That(result.Affixes.Single().AffixId, Is.EqualTo("affix.eligible"));
+        }
+        private LootGenerator GeneratorWithAffixes(ItemDefinition item, params AffixDefinition[] definitions)
+        {
+            return new LootGenerator(
+                new Dictionary<string, ItemDefinition> { [item.Id] = item },
+                definitions.ToDictionary(value => value.Id, StringComparer.Ordinal));
+        }
         private LootGenerator Generator(params ItemDefinition[] items)
         {
             var definitions = items.Length == 0
@@ -144,13 +253,22 @@ namespace BorderValley.Inventory.Tests
             string id,
             ItemRarity minimumRarity,
             AffixEffectKind effectKind,
+            params string[] mutuallyExclusive) =>
+            Affix(id, minimumRarity, effectKind, ItemSlot.Weapon, 1, mutuallyExclusive);
+
+        private AffixDefinition Affix(
+            string id,
+            ItemRarity minimumRarity,
+            AffixEffectKind effectKind,
+            ItemSlot slot,
+            int minItemLevel,
             params string[] mutuallyExclusive)
         {
             var affix = Track(ScriptableObject.CreateInstance<AffixDefinition>());
             affix.EditorConfigure(
                 id,
                 id + ".name",
-                new[] { ItemSlot.Weapon },
+                new[] { slot },
                 minimumRarity,
                 effectKind,
                 CombatStat.Power,
@@ -158,14 +276,13 @@ namespace BorderValley.Inventory.Tests
                 effectKind == AffixEffectKind.Trigger ? PassiveEffectKind.OnAttackApplySlow : default,
                 4,
                 15,
-                1,
+                minItemLevel,
                 0,
                 1,
                 1,
                 mutuallyExclusive);
             return affix;
         }
-
         private ItemDropTableDefinition Table(
             ItemRarity rarity = ItemRarity.Rare,
             int minItemLevel = 1,
