@@ -112,11 +112,24 @@ namespace BorderValley.Data
                     }
                 }
 
+                var objectiveIds = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var objective in quest.Objectives)
                 {
                     if (objective == null)
                     {
                         yield return Issue("missing_id", $"{quest.Id} contains a null objective.", quest);
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(objective.ObjectiveId))
+                    {
+                        yield return Issue("missing_id", $"{quest.Id} contains an objective without an objective ID.", quest);
+                        continue;
+                    }
+
+                    if (!objectiveIds.Add(objective.ObjectiveId))
+                    {
+                        yield return Issue("duplicate_id", $"{quest.Id} contains duplicate objective ID: {objective.ObjectiveId}", quest);
                         continue;
                     }
 

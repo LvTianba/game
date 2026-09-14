@@ -60,7 +60,7 @@ namespace BorderValley.Narrative.Tests
                 "quest.first.title",
                 "quest.first.description",
                 new[] { "quest.second" },
-                new[] { new QuestObjectiveDefinition(QuestObjectiveKind.ReachLocation, "area.test", 1, false, "quest.first.objective") },
+                new[] { new QuestObjectiveDefinition("objective.first", QuestObjectiveKind.ReachLocation, "area.test", 1, false, "quest.first.objective") },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
             var second = Track(ScriptableObject.CreateInstance<QuestDefinition>());
             second.EditorConfigure(
@@ -68,7 +68,7 @@ namespace BorderValley.Narrative.Tests
                 "quest.second.title",
                 "quest.second.description",
                 new[] { "quest.first" },
-                new[] { new QuestObjectiveDefinition(QuestObjectiveKind.ReachLocation, "area.test", 1, false, "quest.second.objective") },
+                new[] { new QuestObjectiveDefinition("objective.second", QuestObjectiveKind.ReachLocation, "area.test", 1, false, "quest.second.objective") },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Experience, string.Empty, 10) });
 
             var issues = ContentValidator.Validate(new ContentDefinition[] { first, second }).ToList();
@@ -76,6 +76,44 @@ namespace BorderValley.Narrative.Tests
             Assert.That(issues.Any(issue => issue.Code == "cyclic_quest_prerequisite"), Is.True);
         }
 
+        [Test]
+        public void Validate_DuplicateQuestObjectiveId_ReturnsDuplicateId()
+        {
+            var area = CreateArea("area.test", System.Array.Empty<string>());
+            var quest = Track(ScriptableObject.CreateInstance<QuestDefinition>());
+            quest.EditorConfigure(
+                "quest.duplicate",
+                "quest.duplicate.title",
+                "quest.duplicate.description",
+                System.Array.Empty<string>(),
+                new[]
+                {
+                    new QuestObjectiveDefinition("objective.duplicate", QuestObjectiveKind.ReachLocation, area.Id, 1, false, "quest.objective.first"),
+                    new QuestObjectiveDefinition("objective.duplicate", QuestObjectiveKind.TalkToNpc, "npc.test", 1, false, "quest.objective.second")
+                },
+                System.Array.Empty<QuestRewardDefinition>());
+
+            AssertIssue("duplicate_id", area, quest);
+        }
+
+        [Test]
+        public void Validate_MissingQuestObjectiveId_ReturnsMissingId()
+        {
+            var area = CreateArea("area.test", System.Array.Empty<string>());
+            var quest = Track(ScriptableObject.CreateInstance<QuestDefinition>());
+            quest.EditorConfigure(
+                "quest.missing_objective",
+                "quest.missing_objective.title",
+                "quest.missing_objective.description",
+                System.Array.Empty<string>(),
+                new[]
+                {
+                    new QuestObjectiveDefinition(string.Empty, QuestObjectiveKind.ReachLocation, area.Id, 1, false, "quest.objective")
+                },
+                System.Array.Empty<QuestRewardDefinition>());
+
+            AssertIssue("missing_id", area, quest);
+        }
         [Test]
         public void Validate_MissingShopItem_ReturnsMissingShopItem()
         {
@@ -153,7 +191,7 @@ namespace BorderValley.Narrative.Tests
                 "quest.test.title",
                 "quest.test.description",
                 System.Array.Empty<string>(),
-                new[] { new QuestObjectiveDefinition(QuestObjectiveKind.TalkToNpc, "npc.test", 1, false, "quest.test.objective") },
+                new[] { new QuestObjectiveDefinition("objective.test", QuestObjectiveKind.TalkToNpc, "npc.test", 1, false, "quest.test.objective") },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
             var encounter = Track(ScriptableObject.CreateInstance<WorldEncounterDefinition>());
             encounter.EditorConfigure(

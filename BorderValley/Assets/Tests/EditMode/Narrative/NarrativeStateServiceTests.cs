@@ -39,7 +39,7 @@ namespace BorderValley.Narrative.Tests
             Assert.That(source.MarkShopUnlocked("shop.blacksmith"), Is.True);
             Assert.That(source.TryAcceptQuest(fixture.Quest.Id, out var acceptError), Is.True, acceptError);
             Assert.That(
-                source.TryAdvanceQuestObjective(fixture.Quest.Id, 0, 1, out var advanceError),
+                source.TryAdvanceQuestObjective(fixture.Quest.Id, "objective.visit", 1, out var advanceError),
                 Is.True,
                 advanceError);
 
@@ -56,9 +56,56 @@ namespace BorderValley.Narrative.Tests
             Assert.That(restored.IsOfferPurchased("shop.general", "offer.potion"), Is.True);
             Assert.That(restored.IsShopUnlocked("shop.blacksmith"), Is.True);
             Assert.That(restored.GetQuestState(fixture.Quest.Id), Is.EqualTo(QuestState.Active));
-            Assert.That(restored.GetObjectiveProgress(fixture.Quest.Id, 0), Is.EqualTo(1));
+            Assert.That(restored.GetObjectiveProgress(fixture.Quest.Id, "objective.visit"), Is.EqualTo(1));
         }
 
+        [Test]
+        public void Restore_WhenObjectiveOrderChanges_RestoresProgressByObjectiveId()
+        {
+            var fixture = CreateFixture();
+            var source = new NarrativeStateService(fixture.Definitions);
+            Assert.That(source.TryAcceptQuest(fixture.Quest.Id, out var acceptError), Is.True, acceptError);
+            Assert.That(
+                source.TryAdvanceQuestObjective(fixture.Quest.Id, "objective.visit", 1, out var advanceError),
+                Is.True,
+                advanceError);
+            var captured = source.Capture();
+
+            var reordered = Track(ScriptableObject.CreateInstance<QuestDefinition>());
+            reordered.EditorConfigure(
+                fixture.Quest.Id,
+                fixture.Quest.TitleKey,
+                fixture.Quest.DescriptionKey,
+                Array.Empty<string>(),
+                new[]
+                {
+                    new QuestObjectiveDefinition(
+                        "objective.talk",
+                        QuestObjectiveKind.TalkToNpc,
+                        fixture.Npc.Id,
+                        1,
+                        false,
+                        "quest.talk.objective"),
+                    new QuestObjectiveDefinition(
+                        "objective.visit",
+                        QuestObjectiveKind.ReachLocation,
+                        fixture.Area.Id,
+                        2,
+                        false,
+                        "quest.visit.objective")
+                },
+                fixture.Quest.Rewards);
+            var definitions = fixture.Definitions
+                .Where(value => value != fixture.Quest)
+                .Concat(new ContentDefinition[] { reordered })
+                .ToArray();
+            var restored = new NarrativeStateService(definitions);
+
+            restored.Restore(captured);
+
+            Assert.That(restored.GetObjectiveProgress(fixture.Quest.Id, "objective.visit"), Is.EqualTo(1));
+            Assert.That(restored.GetObjectiveProgress(fixture.Quest.Id, "objective.talk"), Is.EqualTo(0));
+        }
         [Test]
         public void Capture_SortsCollectionsAndPropertiesByOrdinal()
         {
@@ -193,11 +240,19 @@ namespace BorderValley.Narrative.Tests
                 new[]
                 {
                     new QuestObjectiveDefinition(
+                        "objective.visit",
                         QuestObjectiveKind.ReachLocation,
                         area.Id,
                         2,
                         false,
-                        "quest.visit.objective")
+                        "quest.visit.objective"),
+                    new QuestObjectiveDefinition(
+                        "objective.talk",
+                        QuestObjectiveKind.TalkToNpc,
+                        npcAlpha.Id,
+                        1,
+                        false,
+                        "quest.talk.objective")
                 },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
 

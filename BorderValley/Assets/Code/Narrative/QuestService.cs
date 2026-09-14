@@ -107,8 +107,9 @@ namespace BorderValley.Narrative
 
             var consumedItems = CollectItemsToConsume(quest, requirements);
             var freeSlots = inventory.Capacity - (inventory.Items.Count - consumedItems.Count);
-            var equipmentRewards = quest.Rewards.Count(reward =>
-                reward != null && reward.Kind == QuestRewardKind.Equipment);
+            var equipmentRewards = quest.Rewards
+                .Where(reward => reward != null && reward.Kind == QuestRewardKind.Equipment)
+                .Sum(reward => reward.Amount);
             if (freeSlots < equipmentRewards)
             {
                 error = NarrativeTextKeys.QuestInventoryFull;
@@ -155,12 +156,11 @@ namespace BorderValley.Narrative
             if (storedState == QuestState.NotStarted) return null;
 
             var objectiveViews = quest.Objectives
-                .Select((objective, index) => new QuestObjectiveView(
-                    index,
+                .Select(objective => new QuestObjectiveView(
                     objective,
                     objective.Kind == QuestObjectiveKind.SubmitItem
                         ? Math.Min(objective.RequiredCount, CountAvailableItems(objective.TargetId))
-                        : state.GetObjectiveProgress(quest.Id, index)))
+                        : state.GetObjectiveProgress(quest.Id, objective.ObjectiveId)))
                 .ToArray();
             var effectiveState = storedState == QuestState.Active &&
                                  objectiveViews.All(view => view.IsComplete)
@@ -193,16 +193,18 @@ namespace BorderValley.Narrative
                 var questState = state.GetQuestState(quest.Id);
                 if (questState != QuestState.Active) continue;
 
-                for (var index = 0; index < quest.Objectives.Length; index++)
+                var matching = quest.Objectives
+                    .Where(objective =>
+                        objective != null &&
+                        objective.Kind == kind &&
+                        string.Equals(objective.TargetId, targetId, StringComparison.Ordinal))
+                    .ToArray();
+                if (matching.Length == 0) continue;
+                if (matching.Length != 1 ||
+                    !state.TryAdvanceQuestObjective(quest.Id, matching[0].ObjectiveId, amount, out error))
                 {
-                    var objective = quest.Objectives[index];
-                    if (objective == null ||
-                        objective.Kind != kind ||
-                        !string.Equals(objective.TargetId, targetId, StringComparison.Ordinal))
-                        continue;
-                    if (state.TryAdvanceQuestObjective(quest.Id, index, amount, out error))
-                        continue;
                     state.Restore(snapshot);
+                    error = NarrativeTextKeys.QuestObjectiveInvalid;
                     return false;
                 }
             }
@@ -232,7 +234,7 @@ namespace BorderValley.Narrative
             {
                 var objective = quest.Objectives[index];
                 if (objective == null || objective.Kind == QuestObjectiveKind.SubmitItem) continue;
-                if (state.GetObjectiveProgress(quest.Id, index) < objective.RequiredCount) return false;
+                if (state.GetObjectiveProgress(quest.Id, objective.ObjectiveId) < objective.RequiredCount) return false;
             }
             return true;
         }

@@ -32,12 +32,12 @@ namespace BorderValley.Narrative.Tests
             var prerequisite = CreateQuest(
                 "quest.prereq",
                 Array.Empty<string>(),
-                new[] { Objective(QuestObjectiveKind.TalkToNpc, content.Ranger.Id, 1) },
+                new[] { Objective("talk.ranger", QuestObjectiveKind.TalkToNpc, content.Ranger.Id, 1) },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 5) });
             var main = CreateQuest(
                 "quest.main",
                 new[] { prerequisite.Id },
-                new[] { Objective(QuestObjectiveKind.ReachLocation, content.Area.Id, 1) },
+                new[] { Objective("reach.forest", QuestObjectiveKind.ReachLocation, content.Area.Id, 1) },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
             var runtime = CreateRuntime(content, new[] { prerequisite, main });
 
@@ -61,20 +61,41 @@ namespace BorderValley.Narrative.Tests
             var quest = CreateQuest(
                 "quest.hunt",
                 Array.Empty<string>(),
-                new[] { Objective(QuestObjectiveKind.DefeatEnemy, "enemy.wolf", 2) },
+                new[] { Objective("defeat.wolf", QuestObjectiveKind.DefeatEnemy, "enemy.wolf", 2) },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
             var runtime = CreateRuntime(content, new[] { quest });
             Assert.That(runtime.Quests.TryAccept(quest.Id, out var acceptError), Is.True, acceptError);
 
             Assert.That(runtime.Quests.RecordBattleDefeat("enemy.wolf", out var firstError), Is.True, firstError);
-            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, 0), Is.EqualTo(1));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "defeat.wolf"), Is.EqualTo(1));
             Assert.That(runtime.State.GetQuestState(quest.Id), Is.EqualTo(QuestState.Active));
 
             Assert.That(runtime.Quests.RecordBattleDefeat("enemy.wolf", out var secondError), Is.True, secondError);
-            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, 0), Is.EqualTo(2));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "defeat.wolf"), Is.EqualTo(2));
             Assert.That(runtime.State.GetQuestState(quest.Id), Is.EqualTo(QuestState.ReadyToTurnIn));
         }
 
+        [Test]
+        public void RecordBattleDefeat_WhenMultipleObjectivesMatch_DoesNotAdvanceAny()
+        {
+            var content = CreateContent();
+            var quest = CreateQuest(
+                "quest.ambiguous",
+                Array.Empty<string>(),
+                new[]
+                {
+                    Objective("defeat.wolf.first", QuestObjectiveKind.DefeatEnemy, "enemy.wolf", 1),
+                    Objective("defeat.wolf.second", QuestObjectiveKind.DefeatEnemy, "enemy.wolf", 1)
+                },
+                new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
+            var runtime = CreateRuntime(content, new[] { quest });
+            Assert.That(runtime.Quests.TryAccept(quest.Id, out var acceptError), Is.True, acceptError);
+
+            Assert.That(runtime.Quests.RecordBattleDefeat("enemy.wolf", out var error), Is.False);
+            Assert.That(error, Is.Not.Empty);
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "defeat.wolf.first"), Is.EqualTo(0));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "defeat.wolf.second"), Is.EqualTo(0));
+        }
         [Test]
         public void RecordTalkAndLocation_AdvanceOnlyMatchingObjectives()
         {
@@ -84,16 +105,16 @@ namespace BorderValley.Narrative.Tests
                 Array.Empty<string>(),
                 new[]
                 {
-                    Objective(QuestObjectiveKind.TalkToNpc, content.Ranger.Id, 1),
-                    Objective(QuestObjectiveKind.ReachLocation, content.Area.Id, 1)
+                    Objective("talk.ranger", QuestObjectiveKind.TalkToNpc, content.Ranger.Id, 1),
+                    Objective("reach.forest", QuestObjectiveKind.ReachLocation, content.Area.Id, 1)
                 },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10) });
             var runtime = CreateRuntime(content, new[] { quest });
             Assert.That(runtime.Quests.TryAccept(quest.Id, out var acceptError), Is.True, acceptError);
 
             Assert.That(runtime.Quests.RecordTalk(content.Ranger.Id, out var talkError), Is.True, talkError);
-            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, 0), Is.EqualTo(1));
-            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, 1), Is.EqualTo(0));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "talk.ranger"), Is.EqualTo(1));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "reach.forest"), Is.EqualTo(0));
             Assert.That(runtime.Quests.RecordLocation(content.Area.Id, out var locationError), Is.True, locationError);
             Assert.That(runtime.State.GetQuestState(quest.Id), Is.EqualTo(QuestState.ReadyToTurnIn));
         }
@@ -105,7 +126,7 @@ namespace BorderValley.Narrative.Tests
             var quest = CreateQuest(
                 "quest.deliver",
                 Array.Empty<string>(),
-                new[] { Objective(QuestObjectiveKind.SubmitItem, content.Pelt.Id, 2, true) },
+                new[] { Objective("submit.pelt", QuestObjectiveKind.SubmitItem, content.Pelt.Id, 2, true) },
                 new[]
                 {
                     new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 25),
@@ -152,18 +173,17 @@ namespace BorderValley.Narrative.Tests
         }
 
         [Test]
-        public void TryTurnIn_WhenEquipmentRewardsDoNotFit_LeavesItemsAndRewardsUntouched()
+        public void TryTurnIn_WhenEquipmentAmountExceedsFreeSlots_LeavesItemsAndRewardsUntouched()
         {
             var content = CreateContent();
             var quest = CreateQuest(
                 "quest.no_space",
                 Array.Empty<string>(),
-                new[] { Objective(QuestObjectiveKind.SubmitItem, content.Pelt.Id, 1, true) },
+                new[] { Objective("submit.pelt", QuestObjectiveKind.SubmitItem, content.Pelt.Id, 1, true) },
                 new[]
                 {
                     new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 10),
-                    new QuestRewardDefinition(QuestRewardKind.Equipment, content.Sword.Id, 1),
-                    new QuestRewardDefinition(QuestRewardKind.Equipment, content.Axe.Id, 1)
+                    new QuestRewardDefinition(QuestRewardKind.Equipment, content.Sword.Id, 2)
                 });
             var runtime = CreateRuntime(content, new[] { quest }, capacity: 2);
             Assert.That(runtime.Inventory.TryAdd(Item("pelt.1", content.Pelt.Id), out var peltAdd), Is.True, peltAdd);
@@ -178,10 +198,68 @@ namespace BorderValley.Narrative.Tests
             Assert.That(runtime.State.GetQuestState(quest.Id), Is.Not.EqualTo(QuestState.Completed));
         }
 
+        [Test]
+        public void TryTurnIn_WithEquipmentRewardAmountTwo_AddsTwoUniqueInstances()
+        {
+            var content = CreateContent();
+            var quest = CreateQuest(
+                "quest.two_equipment",
+                Array.Empty<string>(),
+                new[] { Objective("submit.pelt", QuestObjectiveKind.SubmitItem, content.Pelt.Id, 1, true) },
+                new[] { new QuestRewardDefinition(QuestRewardKind.Equipment, content.Sword.Id, 2) });
+            var runtime = CreateRuntime(content, new[] { quest }, capacity: 4);
+            Assert.That(runtime.Inventory.TryAdd(Item("pelt.1", content.Pelt.Id), out var addError), Is.True, addError);
+            Assert.That(runtime.Quests.TryAccept(quest.Id, out var acceptError), Is.True, acceptError);
+
+            Assert.That(runtime.Quests.TryTurnIn(quest.Id, out var turnInError), Is.True, turnInError);
+
+            var equipment = runtime.Inventory.Items
+                .Where(item => item.ItemDefinitionId == content.Sword.Id)
+                .OrderBy(item => item.InstanceId, StringComparer.Ordinal)
+                .ToArray();
+            Assert.That(equipment, Has.Length.EqualTo(2));
+            Assert.That(equipment.Select(item => item.InstanceId).Distinct(StringComparer.Ordinal).Count(), Is.EqualTo(2));
+        }
+
+        [TestCase(QuestRewardKind.Gold)]
+        [TestCase(QuestRewardKind.Material)]
+        [TestCase(QuestRewardKind.Equipment)]
+        public void TryTurnIn_WhenRewardServiceFailsMidway_RollsBackConsumedItemsAndPartialRewards(
+            QuestRewardKind failAfter)
+        {
+            var content = CreateContent();
+            var quest = CreateQuest(
+                "quest.partial_failure",
+                Array.Empty<string>(),
+                new[] { Objective("submit.pelt", QuestObjectiveKind.SubmitItem, content.Pelt.Id, 1, true) },
+                new[]
+                {
+                    new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 7),
+                    new QuestRewardDefinition(QuestRewardKind.Material, content.Ore.Id, 3),
+                    new QuestRewardDefinition(QuestRewardKind.Equipment, content.Sword.Id, 2)
+                });
+            var runtime = CreateRuntime(
+                content,
+                new[] { quest },
+                capacity: 8,
+                (inventory, _) => new FailingRewardService(inventory, failAfter));
+            Assert.That(runtime.Inventory.TryAdd(Item("pelt.1", content.Pelt.Id), out var addError), Is.True, addError);
+            Assert.That(runtime.Quests.TryAccept(quest.Id, out var acceptError), Is.True, acceptError);
+
+            var inventoryBefore = InventorySnapshot.Capture(runtime.Inventory);
+            var questStateBefore = runtime.State.GetQuestState(quest.Id);
+
+            Assert.That(runtime.Quests.TryTurnIn(quest.Id, out var error), Is.False);
+            Assert.That(error, Is.Not.Empty);
+
+            inventoryBefore.AssertMatches(runtime.Inventory);
+            Assert.That(runtime.State.GetQuestState(quest.Id), Is.EqualTo(questStateBefore));
+        }
         private Runtime CreateRuntime(
             Content content,
             IEnumerable<QuestDefinition> quests,
-            int capacity = 8)
+            int capacity = 8,
+            Func<InventoryService, NarrativeStateService, IQuestRewardService> rewardFactory = null)
         {
             var questList = quests.ToArray();
             var definitions = content.Definitions
@@ -192,7 +270,9 @@ namespace BorderValley.Narrative.Tests
             var progression = new PartyProgressionService(
                 new Dictionary<string, CharacterDefinition>(StringComparer.Ordinal),
                 Array.Empty<PartyMemberState>());
-            var rewardService = new QuestRewardService(inventory, progression, content.Items, state);
+            IQuestRewardService rewardService = rewardFactory != null
+                ? rewardFactory(inventory, state)
+                : new QuestRewardService(inventory, progression, content.Items, state);
             var questService = new QuestService(
                 questList.ToDictionary(value => value.Id, StringComparer.Ordinal),
                 state,
@@ -253,11 +333,12 @@ namespace BorderValley.Narrative.Tests
         }
 
         private static QuestObjectiveDefinition Objective(
+            string objectiveId,
             QuestObjectiveKind kind,
             string targetId,
             int requiredCount,
             bool consumeOnTurnIn = false) =>
-            new(kind, targetId, requiredCount, consumeOnTurnIn, "quest.objective");
+            new(objectiveId, kind, targetId, requiredCount, consumeOnTurnIn, "quest.objective");
 
         private ItemDefinition CreateItem(string id, ItemSlot slot)
         {
@@ -317,6 +398,108 @@ namespace BorderValley.Narrative.Tests
             public ShopDefinition Blacksmith { get; }
         }
 
+        private sealed class FailingRewardService : IQuestRewardService
+        {
+            private readonly InventoryService inventory;
+            private readonly QuestRewardKind failAfter;
+
+            public FailingRewardService(InventoryService inventory, QuestRewardKind failAfter)
+            {
+                this.inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
+                this.failAfter = failAfter;
+            }
+
+            public bool TryValidate(QuestDefinition quest, out string error)
+            {
+                error = string.Empty;
+                return quest != null;
+            }
+
+            public bool TryApply(QuestDefinition quest, out string error)
+            {
+                for (var rewardIndex = 0; rewardIndex < quest.Rewards.Length; rewardIndex++)
+                {
+                    var reward = quest.Rewards[rewardIndex];
+                    switch (reward.Kind)
+                    {
+                        case QuestRewardKind.Gold:
+                            inventory.AddGold(reward.Amount);
+                            break;
+                        case QuestRewardKind.Material:
+                            inventory.AddMaterial(reward.TargetId, reward.Amount);
+                            break;
+                        case QuestRewardKind.Equipment:
+                            for (var itemIndex = 0; itemIndex < reward.Amount; itemIndex++)
+                            {
+                                var instanceId = $"failing-reward:{quest.Id}:{rewardIndex}:{itemIndex}";
+                                if (!inventory.TryAdd(
+                                        new ItemInstance(
+                                            instanceId,
+                                            reward.TargetId,
+                                            1,
+                                            ItemRarity.Common,
+                                            Array.Empty<AffixInstance>()),
+                                        out error))
+                                    return false;
+                            }
+                            break;
+                        default:
+                            error = NarrativeTextKeys.QuestRewardInvalid;
+                            return false;
+                    }
+
+                    if (reward.Kind == failAfter)
+                    {
+                        error = "test.partial_failure";
+                        return false;
+                    }
+                }
+
+                error = string.Empty;
+                return true;
+            }
+        }
+
+        private sealed class InventorySnapshot
+        {
+            private InventorySnapshot(
+                int gold,
+                IReadOnlyList<string> items,
+                IReadOnlyList<KeyValuePair<string, int>> materials)
+            {
+                Gold = gold;
+                Items = items;
+                Materials = materials;
+            }
+
+            private int Gold { get; }
+            private IReadOnlyList<string> Items { get; }
+            private IReadOnlyList<KeyValuePair<string, int>> Materials { get; }
+
+            public static InventorySnapshot Capture(InventoryService inventory) =>
+                new(
+                    inventory.Gold,
+                    inventory.Items
+                        .OrderBy(item => item.InstanceId, StringComparer.Ordinal)
+                        .Select(item => item.InstanceId + "|" + item.ItemDefinitionId)
+                        .ToArray(),
+                    inventory.Materials
+                        .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                        .ToArray());
+
+            public void AssertMatches(InventoryService inventory)
+            {
+                Assert.That(inventory.Gold, Is.EqualTo(Gold));
+                Assert.That(
+                    inventory.Items
+                        .OrderBy(item => item.InstanceId, StringComparer.Ordinal)
+                        .Select(item => item.InstanceId + "|" + item.ItemDefinitionId),
+                    Is.EqualTo(Items));
+                Assert.That(
+                    inventory.Materials.OrderBy(pair => pair.Key, StringComparer.Ordinal),
+                    Is.EqualTo(Materials));
+            }
+        }
         private sealed class Runtime
         {
             public Runtime(

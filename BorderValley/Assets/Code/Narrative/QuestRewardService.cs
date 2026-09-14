@@ -74,13 +74,16 @@ namespace BorderValley.Narrative
                             error = NarrativeTextKeys.QuestRewardItemMissing;
                             return false;
                         }
-                        equipmentCount++;
-                        var instanceId = EquipmentInstanceId(quest.Id, index);
-                        if (inventory.Items.Any(item =>
-                                string.Equals(item.InstanceId, instanceId, StringComparison.Ordinal)))
+                        equipmentCount += reward.Amount;
+                        for (var itemIndex = 0; itemIndex < reward.Amount; itemIndex++)
                         {
-                            error = NarrativeTextKeys.QuestRewardItemMissing;
-                            return false;
+                            var instanceId = EquipmentInstanceId(quest.Id, index, itemIndex);
+                            if (inventory.Items.Any(item =>
+                                    string.Equals(item.InstanceId, instanceId, StringComparison.Ordinal)))
+                            {
+                                error = NarrativeTextKeys.QuestRewardItemMissing;
+                                return false;
+                            }
                         }
                         break;
                     case QuestRewardKind.UnlockShop:
@@ -130,15 +133,18 @@ namespace BorderValley.Narrative
                             inventory.AddMaterial(reward.TargetId, reward.Amount);
                             break;
                         case QuestRewardKind.Equipment:
-                            if (!inventory.TryAdd(
-                                    new ItemInstance(
-                                        EquipmentInstanceId(quest.Id, index),
-                                        reward.TargetId,
-                                        1,
-                                        ItemRarity.Common,
-                                        Array.Empty<AffixInstance>()),
-                                    out error))
-                                throw new InvalidOperationException(error);
+                            for (var itemIndex = 0; itemIndex < reward.Amount; itemIndex++)
+                            {
+                                if (!inventory.TryAdd(
+                                        new ItemInstance(
+                                            EquipmentInstanceId(quest.Id, index, itemIndex),
+                                            reward.TargetId,
+                                            1,
+                                            ItemRarity.Common,
+                                            Array.Empty<AffixInstance>()),
+                                        out error))
+                                    throw new InvalidOperationException(error);
+                            }
                             break;
                         case QuestRewardKind.UnlockShop:
                             if (!state.MarkShopUnlocked(reward.TargetId))
@@ -160,7 +166,7 @@ namespace BorderValley.Narrative
             }
         }
 
-        private static string EquipmentInstanceId(string questId, int rewardIndex) =>
-            "quest-reward:" + questId + ":" + rewardIndex;
+        private static string EquipmentInstanceId(string questId, int rewardIndex, int itemIndex) =>
+            "quest-reward:" + questId + ":" + rewardIndex + ":" + itemIndex;
     }
 }

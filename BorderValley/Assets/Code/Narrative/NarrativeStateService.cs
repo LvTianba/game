@@ -183,22 +183,22 @@ namespace BorderValley.Narrative
                 return false;
             }
 
-            questProgress[questId] = new QuestProgressRecord(
-                QuestState.Active,
-                new int[quest.Objectives.Length]);
+            var initialProgress = CreateInitialProgress(quest, out error);
+            if (initialProgress == null) return false;
+            questProgress[questId] = new QuestProgressRecord(QuestState.Active, initialProgress);
             error = string.Empty;
             return true;
         }
 
         public bool TryAdvanceQuestObjective(
             string questId,
-            int objectiveIndex,
+            string objectiveId,
             int amount,
             out string error)
         {
             error = string.Empty;
             if (!TryGetActiveQuest(questId, out var quest, out var progress, out error)) return false;
-            if (objectiveIndex < 0 || objectiveIndex >= quest.Objectives.Length)
+            if (!TryFindUniqueObjective(quest, objectiveId, out var objective))
             {
                 error = NarrativeTextKeys.QuestObjectiveInvalid;
                 return false;
@@ -208,14 +208,17 @@ namespace BorderValley.Narrative
                 error = NarrativeTextKeys.QuestObjectiveAmountInvalid;
                 return false;
             }
+            if (!progress.Progress.TryGetValue(objectiveId, out var current))
+            {
+                error = NarrativeTextKeys.QuestObjectiveInvalid;
+                return false;
+            }
 
-            var required = quest.Objectives[objectiveIndex].RequiredCount;
-            progress.Progress[objectiveIndex] = Math.Min(
-                required,
-                progress.Progress[objectiveIndex] + amount);
-            progress.State = progress.Progress
-                .Select((value, index) => value >= quest.Objectives[index].RequiredCount)
-                .All(value => value)
+            progress.Progress[objectiveId] = Math.Min(objective.RequiredCount, current + amount);
+            progress.State = quest.Objectives.All(value =>
+                    value != null &&
+                    progress.Progress.TryGetValue(value.ObjectiveId, out var count) &&
+                    count >= value.RequiredCount)
                 ? QuestState.ReadyToTurnIn
                 : QuestState.Active;
             return true;
@@ -237,14 +240,14 @@ namespace BorderValley.Narrative
                 : QuestState.NotStarted;
         }
 
-        public int GetObjectiveProgress(string questId, int objectiveIndex)
+        public int GetObjectiveProgress(string questId, string objectiveId)
         {
             if (string.IsNullOrWhiteSpace(questId) ||
-                objectiveIndex < 0 ||
+                string.IsNullOrWhiteSpace(objectiveId) ||
                 !questProgress.TryGetValue(questId, out var progress) ||
-                objectiveIndex >= progress.Progress.Length)
+                !progress.Progress.TryGetValue(objectiveId, out var value))
                 return 0;
-            return progress.Progress[objectiveIndex];
+            return value;
         }
 
         public bool HasShop(string shopId) =>
@@ -288,7 +291,10 @@ namespace BorderValley.Narrative
                     {
                         ["questId"] = pair.Key,
                         ["state"] = pair.Value.State.ToString(),
-                        ["progress"] = new JArray(pair.Value.Progress)
+                        ["progress"] = new JObject(
+                            pair.Value.Progress
+                                .OrderBy(progressPair => progressPair.Key, StringComparer.Ordinal)
+                                .Select(progressPair => new JProperty(progressPair.Key, progressPair.Value)))
                     }))
         };
 
@@ -524,27 +530,82 @@ namespace BorderValley.Narrative
                     string.IsNullOrWhiteSpace(stateText) ||
                     !Enum.TryParse<QuestState>(stateText, out var parsedQuestState) ||
                     !Enum.IsDefined(typeof(QuestState), parsedQuestState) ||
-                    !(value["progress"] is JArray progressState) ||
-                    progressState.Count != quest.Objectives.Length)
+                    !(value["progress"] is JObject progressState))
                     throw new InvalidOperationException("Save contains invalid quest progress.");
 
-                var progress = new int[progressState.Count];
-                for (var index = 0; index < progressState.Count; index++)
+                var objectives = BuildObjectiveMap(quest);
+                if (objectives.Count != quest.Objectives.Length)
+                    throw new InvalidOperationException("Save references invalid quest objectives.");
+                if (progressState.Properties().Count() != objectives.Count)
+                    throw new InvalidOperationException("Save contains incomplete quest progress.");
+
+                var progress = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (var property in progressState.Properties())
                 {
-                    var progressToken = progressState[index];
-                    if (progressToken == null || progressToken.Type != JTokenType.Integer)
+                    if (!objectives.TryGetValue(property.Name, out var objective) ||
+                        property.Value.Type != JTokenType.Integer)
                         throw new InvalidOperationException("Save contains invalid quest progress.");
-                    var valueCount = progressToken.Value<int>();
-                    var objective = quest.Objectives[index];
-                    if (objective == null || valueCount < 0 || valueCount > objective.RequiredCount)
+                    var valueCount = property.Value.Value<int>();
+                    if (valueCount < 0 || valueCount > objective.RequiredCount ||
+                        !progress.TryAdd(property.Name, valueCount))
                         throw new InvalidOperationException("Save contains invalid quest progress.");
-                    progress[index] = valueCount;
                 }
 
+                if (progress.Count != objectives.Count)
+                    throw new InvalidOperationException("Save contains incomplete quest progress.");
                 if (!parsed.TryAdd(questId, new QuestProgressRecord(parsedQuestState, progress)))
                     throw new InvalidOperationException("Save contains duplicate quest progress.");
             }
             return parsed;
+        }
+
+        private static Dictionary<string, int> CreateInitialProgress(
+            QuestDefinition quest,
+            out string error)
+        {
+            var objectives = BuildObjectiveMap(quest);
+            if (objectives.Count != quest.Objectives.Length)
+            {
+                error = NarrativeTextKeys.QuestObjectiveInvalid;
+                return null;
+            }
+
+            var progress = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var objective in quest.Objectives)
+                progress[objective.ObjectiveId] = 0;
+            error = string.Empty;
+            return progress;
+        }
+
+        private static Dictionary<string, QuestObjectiveDefinition> BuildObjectiveMap(QuestDefinition quest)
+        {
+            var objectives = new Dictionary<string, QuestObjectiveDefinition>(StringComparer.Ordinal);
+            foreach (var objective in quest.Objectives)
+            {
+                if (objective == null ||
+                    string.IsNullOrWhiteSpace(objective.ObjectiveId) ||
+                    !objectives.TryAdd(objective.ObjectiveId, objective))
+                    return new Dictionary<string, QuestObjectiveDefinition>();
+            }
+            return objectives;
+        }
+
+        private static bool TryFindUniqueObjective(
+            QuestDefinition quest,
+            string objectiveId,
+            out QuestObjectiveDefinition objective)
+        {
+            objective = null;
+            if (string.IsNullOrWhiteSpace(objectiveId)) return false;
+            foreach (var candidate in quest.Objectives)
+            {
+                if (candidate == null ||
+                    !string.Equals(candidate.ObjectiveId, objectiveId, StringComparison.Ordinal))
+                    continue;
+                if (objective != null) return false;
+                objective = candidate;
+            }
+            return objective != null;
         }
 
         private static string OfferKey(string shopId, string offerId) =>
@@ -554,14 +615,14 @@ namespace BorderValley.Narrative
 
         private sealed class QuestProgressRecord
         {
-            public QuestProgressRecord(QuestState state, int[] progress)
+            public QuestProgressRecord(QuestState state, Dictionary<string, int> progress)
             {
                 State = state;
                 Progress = progress;
             }
 
             public QuestState State { get; set; }
-            public int[] Progress { get; }
+            public Dictionary<string, int> Progress { get; }
         }
     }
 }
