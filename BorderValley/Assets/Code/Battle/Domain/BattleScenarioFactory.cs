@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using BorderValley.Core.BattleFlow;
-using System;
+
 using System.Collections.Generic;
 
 namespace BorderValley.Battle.Domain

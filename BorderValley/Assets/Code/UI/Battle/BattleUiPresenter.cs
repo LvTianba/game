@@ -118,6 +118,7 @@ namespace BorderValley.UI.Battle
             var basicSkill = skills.Values.FirstOrDefault(skill =>
                 skill.Id == BasicSkillId ||
                 skill.Id.StartsWith(BasicSkillId + "@", StringComparison.Ordinal));
+            if (basicSkill != null)
             {
                 var target = SkillTargetValidator.GetValidTargets(
                         engine.State,

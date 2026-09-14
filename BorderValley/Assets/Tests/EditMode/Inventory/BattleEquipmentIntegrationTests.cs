@@ -235,6 +235,44 @@ namespace BorderValley.Inventory.Tests
             Assert.That(defender.Health, Is.EqualTo(5));
             Assert.That(attacker.HasActed, Is.True);
         }
+        [Test]
+        public void BattleUiPresenter_WithoutBasicSkill_MovesWithoutThrowing()
+        {
+            var attacker = new BattleUnit(
+                "player",
+                "unit.test",
+                Team.Player,
+                new UnitStats(10, 10, 5, 0, 10, 0f, 0),
+                new GridPosition(0, 0));
+            var defender = Unit(
+                "enemy",
+                0,
+                0,
+                Array.Empty<BattlePassiveSnapshot>(),
+                maxHealth: 10,
+                team: Team.Enemy,
+                position: new GridPosition(2, 0));
+            var state = new BattleState(BattleMap.CreatePlain(3, 1));
+            state.AddUnit(attacker);
+            state.AddUnit(defender);
+            var scenario = new BattleScenario(
+                state,
+                new Dictionary<string, SkillDefinition>(),
+                new Dictionary<string, SkillDefinition>(),
+                new Dictionary<string, string[]>
+                {
+                    ["player"] = Array.Empty<string>(),
+                    ["enemy"] = Array.Empty<string>()
+                });
+            var presenter = new BattleUiPresenter(scenario, Random());
+            presenter.Start();
+
+            var result = presenter.TapCell(new GridPosition(1, 0));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(attacker.Position, Is.EqualTo(new GridPosition(1, 0)));
+        }
+
         private static BattleCombatantSnapshot Snapshot(
             int power,
             int maxHealth = 20,
