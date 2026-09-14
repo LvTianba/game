@@ -11,10 +11,19 @@ namespace BorderValley.World
         public static BattleRequest BuildRequest(
             WorldEncounterDefinition encounter,
             BattlePartySnapshot party,
-            string seed)
+            string seed) =>
+            BuildRequest(encounter, party, seed, WorldReturnScene);
+
+        public static BattleRequest BuildRequest(
+            WorldEncounterDefinition encounter,
+            BattlePartySnapshot party,
+            string seed,
+            string returnScene)
         {
             if (encounter == null) throw new ArgumentNullException(nameof(encounter));
             if (party == null) throw new ArgumentNullException(nameof(party));
+            if (string.IsNullOrWhiteSpace(returnScene))
+                throw new ArgumentException("Return scene cannot be empty.", nameof(returnScene));
 
             var context = new BattleContext(
                 encounter.EncounterId,
@@ -26,7 +35,7 @@ namespace BorderValley.World
             return new BattleRequest(
                 encounter.ScenarioId,
                 seed,
-                WorldReturnScene,
+                returnScene,
                 party,
                 context);
         }

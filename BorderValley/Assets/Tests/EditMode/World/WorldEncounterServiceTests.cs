@@ -23,19 +23,7 @@ namespace BorderValley.World.Tests
         [Test]
         public void BuildRequest_PreservesScenarioPartySeedAndEncounterContext()
         {
-            var encounter = Track(ScriptableObject.CreateInstance<WorldEncounterDefinition>());
-            encounter.EditorConfigure(
-                "encounter.forest.bandits",
-                "scenario.forest.bandits",
-                new[] { "enemy.bandit", "enemy.wolf" },
-                "loot.bandit.core",
-                30,
-                45,
-                new Vector2(3f, 4f),
-                2f,
-                true,
-                "event.forest.enter",
-                "event.bandits.defeated");
+            var encounter = CreateEncounter();
             var party = PartySnapshot();
 
             var request = WorldEncounterService.BuildRequest(encounter, party, "seed.forest.7");
@@ -53,6 +41,49 @@ namespace BorderValley.World.Tests
                 request.Context.EnemyDefinitionIds,
                 Is.EqualTo(new[] { "enemy.bandit", "enemy.wolf" }));
             Assert.That(request.Context.Repeatable, Is.True);
+        }
+
+        [Test]
+        public void BuildRequest_WithExplicitReturnScene_PreservesIt()
+        {
+            var request = WorldEncounterService.BuildRequest(
+                CreateEncounter(),
+                PartySnapshot(),
+                "seed.explicit",
+                "World.Return");
+
+            Assert.That(request.Seed, Is.EqualTo("seed.explicit"));
+            Assert.That(request.ReturnScene, Is.EqualTo("World.Return"));
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase("   ")]
+        public void BuildRequest_WhenExplicitReturnSceneIsBlank_Throws(string returnScene)
+        {
+            Assert.Throws<ArgumentException>(() => WorldEncounterService.BuildRequest(
+                CreateEncounter(),
+                PartySnapshot(),
+                "seed.invalid-return",
+                returnScene));
+        }
+
+        private WorldEncounterDefinition CreateEncounter()
+        {
+            var encounter = Track(ScriptableObject.CreateInstance<WorldEncounterDefinition>());
+            encounter.EditorConfigure(
+                "encounter.forest.bandits",
+                "scenario.forest.bandits",
+                new[] { "enemy.bandit", "enemy.wolf" },
+                "loot.bandit.core",
+                30,
+                45,
+                new Vector2(3f, 4f),
+                2f,
+                true,
+                "event.forest.enter",
+                "event.bandits.defeated");
+            return encounter;
         }
 
         private static BattlePartySnapshot PartySnapshot()

@@ -71,6 +71,70 @@ namespace BorderValley.World.Tests
         }
 
         [Test]
+        public void TryMove_FromTangentPosition_MovesAlongObstacleEdge()
+        {
+            var area = CreateArea(new Rect(0f, 0f, 10f, 10f), new Rect(2f, 2f, 2f, 1f));
+
+            var moved = WorldMovementSolver.TryMove(
+                new Vector2(2.5f, 1.5f),
+                new Vector2(1f, 0f),
+                0.5f,
+                area,
+                out var result);
+
+            Assert.That(moved, Is.True);
+            Assert.That(result, Is.EqualTo(new Vector2(3.5f, 1.5f)));
+        }
+
+        [TestCase(0f, 10f)]
+        [TestCase(10f, 0f)]
+        public void TryMove_NonPositiveBounds_ReturnsFalseAndOriginalPosition(
+            float width,
+            float height)
+        {
+            var current = new Vector2(1f, 2f);
+            var area = CreateArea(new Rect(0f, 0f, width, height));
+
+            var moved = WorldMovementSolver.TryMove(
+                current,
+                Vector2.zero,
+                0f,
+                area,
+                out var result);
+
+            Assert.That(moved, Is.False);
+            Assert.That(result, Is.EqualTo(current));
+        }
+
+        [Test]
+        public void TryMove_AnyNonFiniteObstacle_ReturnsFalseAndOriginalPosition()
+        {
+            var current = new Vector2(1f, 2f);
+            var invalidObstacles = new[]
+            {
+                new Rect(float.NaN, 2f, 1f, 1f),
+                new Rect(2f, float.PositiveInfinity, 1f, 1f),
+                new Rect(2f, 2f, float.PositiveInfinity, 1f),
+                new Rect(2f, 2f, 1f, float.NaN)
+            };
+
+            foreach (var obstacle in invalidObstacles)
+            {
+                var area = CreateArea(new Rect(0f, 0f, 10f, 10f), obstacle);
+
+                var moved = WorldMovementSolver.TryMove(
+                    current,
+                    Vector2.zero,
+                    0.5f,
+                    area,
+                    out var result);
+
+                Assert.That(moved, Is.False, obstacle.ToString());
+                Assert.That(result, Is.EqualTo(current), obstacle.ToString());
+            }
+        }
+
+        [Test]
         public void TryMove_InvalidRadius_ReturnsFalseAndOriginalPosition()
         {
             var area = CreateArea(new Rect(0f, 0f, 10f, 10f));

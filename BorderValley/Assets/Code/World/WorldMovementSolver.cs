@@ -17,9 +17,11 @@ namespace BorderValley.World
                 return false;
 
             var bounds = area.Bounds;
-            if (!IsFinite(bounds) || bounds.width < 0f || bounds.height < 0f)
+            if (!IsFinite(bounds) || bounds.width <= 0f || bounds.height <= 0f)
                 return false;
             if (bounds.width < radius * 2f || bounds.height < radius * 2f)
+                return false;
+            if (!AreObstaclesFinite(area.Obstacles))
                 return false;
 
             var minX = bounds.xMin + radius;
@@ -56,10 +58,18 @@ namespace BorderValley.World
             return false;
         }
 
+        private static bool AreObstaclesFinite(Rect[] obstacles)
+        {
+            if (obstacles == null) return true;
+            foreach (var obstacle in obstacles)
+            {
+                if (!IsFinite(obstacle)) return false;
+            }
+            return true;
+        }
+
         private static bool IntersectsObstacle(Vector2 center, float radius, Rect obstacle)
         {
-            if (!IsFinite(obstacle)) return false;
-
             var minX = Mathf.Min(obstacle.xMin, obstacle.xMax);
             var maxX = Mathf.Max(obstacle.xMin, obstacle.xMax);
             var minY = Mathf.Min(obstacle.yMin, obstacle.yMax);
@@ -68,7 +78,7 @@ namespace BorderValley.World
             var closestY = Mathf.Clamp(center.y, minY, maxY);
             var offsetX = center.x - closestX;
             var offsetY = center.y - closestY;
-            return offsetX * offsetX + offsetY * offsetY <= radius * radius;
+            return offsetX * offsetX + offsetY * offsetY < radius * radius;
         }
 
         private static bool IsFinite(Vector2 value) =>
