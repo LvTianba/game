@@ -75,6 +75,60 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void SaveParticipant_AfterSafePointReturn_RestoresWithoutPendingWipe()
+        {
+            var root = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "BorderValleyTests", Guid.NewGuid().ToString("N"));
+            var progression = Progression();
+            progression.ApplyBattleUnitStates(new[]
+            {
+                new BattleUnitResult("player.warrior", 0, 0),
+                new BattleUnitResult("player.ranger", 1, 0),
+                new BattleUnitResult("player.mage", 1, 0)
+            });
+            Assert.That(progression.HasPendingWipeReturn, Is.True);
+            progression.ReturnToSafePoint();
+            Assert.That(progression.HasPendingWipeReturn, Is.False);
+
+            var save = new SaveService(root, new ISaveParticipant[] { progression });
+            save.Save(0, "World");
+            var restored = Progression();
+            Assert.That(new SaveService(root, new ISaveParticipant[] { restored }).Load(0), Is.True);
+            Assert.That(restored.HasPendingWipeReturn, Is.False);
+            System.IO.Directory.Delete(root, true);
+        }
+
+        [Test]
+        public void Restore_WhenPendingWipeFlagIsMissing_RecomputesFromHealth()
+        {
+            var progression = Progression(new[]
+            {
+                new PartyMemberState("player.warrior", "class.warrior", 1, 0, 0, 1, 0)
+            });
+            progression.Restore(new JObject
+            {
+                ["safePointId"] = "world.camp",
+                ["members"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["memberId"] = "player.warrior",
+                        ["characterId"] = "class.warrior",
+                        ["level"] = 1,
+                        ["experience"] = 0,
+                        ["skillPoints"] = 0,
+                        ["currentHealth"] = 1,
+                        ["currentMana"] = 0,
+                        ["skillRanks"] = new JObject()
+                    }
+                }
+            });
+
+            Assert.That(progression.HasPendingWipeReturn, Is.True);
+            Assert.That(progression.SafePointId, Is.EqualTo("world.camp"));
+        }
+
+        [Test]
         public void SaveParticipant_RoundTripsGrowthSkillRanksAndResources()
         {
             var root = System.IO.Path.Combine(

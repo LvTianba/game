@@ -167,6 +167,7 @@ namespace BorderValley.Inventory
         public JObject Capture() => new()
         {
             ["safePointId"] = SafePointId,
+            ["hasPendingWipeReturn"] = HasPendingWipeReturn,
             ["members"] = new JArray(members.Select(member => new JObject
             {
                 ["memberId"] = member.MemberId,
@@ -225,7 +226,10 @@ namespace BorderValley.Inventory
                 changed = true;
             }
 
-            var pendingWipe = members.Count > 0 && members.All(member => member.CurrentHealth <= 1);
+            var savedPendingWipe = state["hasPendingWipeReturn"];
+            var pendingWipe = savedPendingWipe == null || savedPendingWipe.Type == JTokenType.Null
+                ? members.Count > 0 && members.All(member => member.CurrentHealth <= 1)
+                : savedPendingWipe.Value<bool>();
             if (HasPendingWipeReturn != pendingWipe)
             {
                 HasPendingWipeReturn = pendingWipe;
