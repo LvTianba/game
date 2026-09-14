@@ -118,7 +118,8 @@ namespace BorderValley.PlayModeTests
                 Assert.That(pendingEntry, Is.Not.Null);
                 Assert.That(pendingEntry.HasPendingRewardForTests, Is.True);
                 Assert.That(pendingEntry.ResultLabel.text, Is.EqualTo(InventoryTextKeys.AutoSaveFailed));
-                Assert.That(pendingEntry.SettlementCountForTests, Is.Zero);
+                Assert.That(pendingEntry.SettlementCountForTests, Is.EqualTo(1));
+                Assert.That(pendingEntry.SaveAttemptCountForTests, Is.EqualTo(1));
                 Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
                 Assert.That(
                     fixture.State.GetObjectiveProgress(fixture.Quest.Id, fixture.ObjectiveId),
@@ -132,6 +133,7 @@ namespace BorderValley.PlayModeTests
             Assert.That(pendingEntry.ConsumePendingResultForTests(), Is.True);
             Assert.That(pendingEntry.HasPendingRewardForTests, Is.False);
             Assert.That(pendingEntry.SettlementCountForTests, Is.EqualTo(1));
+            Assert.That(pendingEntry.SaveAttemptCountForTests, Is.EqualTo(2));
             Assert.That(inventory.Gold, Is.EqualTo(settledGold));
             Assert.That(inventory.Items.Count, Is.EqualTo(settledItems));
             Assert.That(progression.TotalExperience, Is.EqualTo(settledExperience));

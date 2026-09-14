@@ -51,6 +51,7 @@ namespace BorderValley.UI.Battle
         public InventoryPanelView InventoryPanel { get; private set; }
         public bool HasPendingRewardForTests => pendingReward != null;
         public int SettlementCountForTests { get; private set; }
+        public int SaveAttemptCountForTests { get; private set; }
 
         private void Start()
         {
@@ -198,6 +199,7 @@ namespace BorderValley.UI.Battle
                 {
                     var encounter = ResolveEncounter(pending.Result.Context);
                     var service = CreateSettlementService(pending.Result);
+                    SettlementCountForTests++;
                     if (!service.Settle(pending.Result, encounter, out var settlement))
                     {
                         ShowResult(settlement.ErrorKey);
@@ -215,7 +217,6 @@ namespace BorderValley.UI.Battle
                 }
 
                 pendingReward = null;
-                SettlementCountForTests++;
                 RefreshResultAndPartyLabels(pending.Result, false);
                 return true;
             }
@@ -329,6 +330,7 @@ namespace BorderValley.UI.Battle
         }
         private bool TrySaveWorld()
         {
+            SaveAttemptCountForTests++;
             if (saveService == null)
                 return false;
 
