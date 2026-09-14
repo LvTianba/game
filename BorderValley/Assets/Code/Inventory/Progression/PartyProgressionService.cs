@@ -136,6 +136,27 @@ namespace BorderValley.Inventory
             if (changed) Changed?.Invoke();
         }
 
+        public void RecoverOutOfCombat(int amount)
+        {
+            if (amount <= 0) return;
+            var changed = false;
+            foreach (var member in members)
+            {
+                if (!characters.TryGetValue(member.CharacterId, out var character))
+                    continue;
+                var maxHealth = Math.Max(1, character.GetBaseStat(BorderValley.Core.Combat.CombatStat.MaxHealth, member.Level));
+                var maxMana = Math.Max(0, character.GetBaseStat(BorderValley.Core.Combat.CombatStat.MaxMana, member.Level));
+                var health = Math.Min(maxHealth, member.CurrentHealth + amount);
+                var mana = Math.Min(maxMana, member.CurrentMana + amount);
+                if (member.CurrentHealth == health && member.CurrentMana == mana)
+                    continue;
+                member.CurrentHealth = health;
+                member.CurrentMana = mana;
+                changed = true;
+            }
+            if (changed) Changed?.Invoke();
+        }
+
         public void ReturnToSafePoint()
         {
             SafePointId = DefaultSafePointId;

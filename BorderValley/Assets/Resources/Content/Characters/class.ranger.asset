@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6af585674e1642c0bf26118d8c87989b, type: 3}
+  m_Name: class.ranger
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Items.CharacterDefinition
+  id: class.ranger
+  localizationKey: class.ranger.name
+  baseStats:
+  - stat: 0
+    value: 18
+  - stat: 1
+    value: 10
+  - stat: 2
+    value: 8
+  - stat: 3
+    value: 2
+  - stat: 4
+    value: 7
+  - stat: 5
+    value: 1000
+  - stat: 6
+    value: 2
+  growthStats:
+  - stat: 0
+    value: 2
+  - stat: 1
+    value: 1
+  - stat: 2
+    value: 2
+  - stat: 3
+    value: 1
+  - stat: 4
+    value: 1
+  startingSkillIds:
+  - skill.piercing_shot
+  skillUnlocks:
+  - skillId: skill.snare
+    level: 2
+  - skillId: skill.twin_shot
+    level: 4
