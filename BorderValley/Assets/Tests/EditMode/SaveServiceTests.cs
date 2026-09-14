@@ -38,6 +38,48 @@ namespace BorderValley.Core.Tests
         }
 
         [Test]
+        public void Load_WhenPrimaryPayloadFailsSemantically_RollsBackAndUsesBackup()
+        {
+            var first = new FakeParticipant { ParticipantKey = "first", Value = 11 };
+            var second = new FakeParticipant { ParticipantKey = "second", Value = 110 };
+            var service = new SaveService(root, new[] { first, second });
+            service.Save(0, "First");
+            first.Value = 22;
+            second.Value = 220;
+            service.Save(0, "Second");
+            first.Value = 33;
+            second.Value = 330;
+            service.Save(0, "Third");
+
+            first.RejectValue = 33;
+            first.Value = 99;
+            second.Value = 990;
+
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(first.Value, Is.EqualTo(22));
+            Assert.That(second.Value, Is.EqualTo(220));
+            Assert.That(first.CurrentScene, Is.EqualTo("Second"));
+            Assert.That(second.CurrentScene, Is.EqualTo("Second"));
+        }
+
+        [Test]
+        public void Save_WhenPayloadUnchanged_PreservesExistingBackup()
+        {
+            var participant = new FakeParticipant { Value = 11 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "World");
+            participant.Value = 22;
+            service.Save(0, "Forest");
+            service.Save(0, "Forest");
+            File.WriteAllText(service.GetPrimaryPathForTests(0), "{broken");
+
+            participant.Reset();
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(11));
+            Assert.That(participant.CurrentScene, Is.EqualTo("World"));
+        }
+
+        [Test]
         public void Save_WhenPrimaryIsCorrupt_PreservesExistingBackup()
         {
             var participant = new FakeParticipant { Value = 11 };
@@ -123,11 +165,18 @@ namespace BorderValley.Core.Tests
 
         private sealed class FakeParticipant : ISaveParticipant
         {
-            public string Key => "fake";
+            public string ParticipantKey { get; set; } = "fake";
+            public string Key => ParticipantKey;
             public int Value { get; set; }
+            public int RejectValue { get; set; }
             public string CurrentScene { get; private set; } = string.Empty;
             public JObject Capture() => new JObject { ["value"] = Value };
-            public void Restore(JObject state) => Value = state.Value<int>("value");
+            public void Restore(JObject state)
+            {
+                Value = state.Value<int>("value");
+                if (Value == RejectValue)
+                    throw new InvalidOperationException("Rejected semantic payload.");
+            }
             public void RestoreContext(string sceneName) => CurrentScene = sceneName;
             public void Reset() { Value = 0; CurrentScene = string.Empty; }
         }

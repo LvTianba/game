@@ -68,6 +68,11 @@ namespace BorderValley.Core.Persistence
                         File.Move(temporary, primary);
                         break;
                     case SaveFileState.Valid:
+                        if (FilesHaveSamePayload(temporary, primary))
+                        {
+                            TryDeleteFile(temporary);
+                            break;
+                        }
                         File.Replace(temporary, primary, backup);
                         break;
                     case SaveFileState.Invalid:
@@ -133,18 +138,59 @@ namespace BorderValley.Core.Persistence
                 var data = ReadValidSaveData(path);
                 if (data == null) return false;
 
+                var snapshots = participants.Values.ToDictionary(
+                    participant => participant.Key,
+                    participant => participant.Capture(),
+                    StringComparer.Ordinal);
+
+                try
+                {
+                    foreach (var participant in participants.Values)
+                    {
+                        participant.Reset();
+                        if (!data.Participants.TryGetValue(participant.Key, out var state))
+                            throw new InvalidOperationException(
+                                "Save is missing participant: " + participant.Key);
+                        participant.Restore(state);
+                        participant.RestoreContext(data.SceneName);
+                    }
+
+                    foreach (var participant in participants.Values)
+                    {
+                        if (participant is ISaveParticipantPostRestore postRestore)
+                            postRestore.CompleteRestore(participants);
+                    }
+
+                    return true;
+                }
+                catch (Exception)
+                {
+                    Rollback(snapshots);
+                    return false;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private void Rollback(IReadOnlyDictionary<string, JObject> snapshots)
+        {
+            try
+            {
                 foreach (var participant in participants.Values)
                 {
                     participant.Reset();
-                    if (data.Participants.TryGetValue(participant.Key, out var state))
+                    if (snapshots.TryGetValue(participant.Key, out var state))
                         participant.Restore(state);
-                    participant.RestoreContext(data.SceneName);
+                    participant.RestoreContext(string.Empty);
                 }
-                return true;
             }
-            catch (IOException) { return false; }
-            catch (UnauthorizedAccessException) { return false; }
-            catch (JsonException) { return false; }
+            catch (Exception)
+            {
+                // The next load path will attempt a full reset/restore again.
+            }
         }
 
         private SaveFileState InspectSaveFile(string path, out Exception readException)
@@ -190,6 +236,19 @@ namespace BorderValley.Core.Persistence
         {
             if (slot < 0 || slot > 3) throw new ArgumentOutOfRangeException(nameof(slot));
             return Path.Combine(root, $"slot-{slot}.json");
+        }
+
+        private bool FilesHaveSamePayload(string left, string right)
+        {
+            var leftData = ReadValidSaveData(left);
+            var rightData = ReadValidSaveData(right);
+            return leftData != null &&
+                   rightData != null &&
+                   leftData.SchemaVersion == rightData.SchemaVersion &&
+                   string.Equals(leftData.SceneName, rightData.SceneName, StringComparison.Ordinal) &&
+                   JToken.DeepEquals(
+                       JObject.FromObject(leftData.Participants),
+                       JObject.FromObject(rightData.Participants));
         }
 
         private static void TryDeleteFile(string path)

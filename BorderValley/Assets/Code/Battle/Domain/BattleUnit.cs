@@ -1,3 +1,4 @@
+using BorderValley.Core.BattleFlow;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,18 +8,24 @@ namespace BorderValley.Battle.Domain
     public sealed class BattleUnit
     {
         private readonly List<StatusInstance> statuses = new();
+        private readonly IReadOnlyList<BattlePassiveSnapshot> passives;
 
         public BattleUnit(
             string id,
             string definitionId,
             Team team,
             UnitStats stats,
-            GridPosition position)
+            GridPosition position,
+            IEnumerable<BattlePassiveSnapshot> passives = null)
         {
             Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException(nameof(id)) : id;
             DefinitionId = string.IsNullOrWhiteSpace(definitionId) ? throw new ArgumentException(nameof(definitionId)) : definitionId;
             Team = team;
             Stats = stats;
+            this.passives = Array.AsReadOnly((passives ?? Array.Empty<BattlePassiveSnapshot>()).ToArray());
+            if (this.passives.Any(passive => passive == null))
+                throw new ArgumentException("Passives cannot contain null.", nameof(passives));
+
             Position = position;
             Health = stats.MaxHealth;
             Mana = stats.MaxMana;
@@ -35,7 +42,14 @@ namespace BorderValley.Battle.Domain
         public bool HasMoved { get; private set; }
         public bool HasActed { get; private set; }
         public IReadOnlyList<StatusInstance> Statuses => statuses;
+        public IReadOnlyList<BattlePassiveSnapshot> Passives => passives;
         public Dictionary<string, int> Cooldowns { get; } = new(StringComparer.Ordinal);
+
+        public void SetCurrentResources(int health, int mana)
+        {
+            Health = Math.Clamp(health, 0, Stats.MaxHealth);
+            Mana = Math.Clamp(mana, 0, Stats.MaxMana);
+        }
 
         public void MoveTo(GridPosition position)
         {

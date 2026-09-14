@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b6008c7542a499cb63ad16cb033efe8, type: 3}
+  m_Name: loot.bandit.core
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Items.ItemDropTableDefinition
+  id: loot.bandit.core
+  minItemLevel: 1
+  maxItemLevel: 10
+  entries:
+  - item: {fileID: 11400000, guid: ac3fe04113cb576479f91134d62eb70c, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: f0d80ad626a3cc6418c851c79653bde4, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: 95abce721d3409e43bb1d0144aadcfce, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: f2af75fad035be049a52e79a24b91c64, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: c115e4b9109b8514a88923b30134f34d, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: b9c2bc0e851a7374790822d1227e75f2, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: a0183a1af55bf6c4cbe9a5415ef87a70, type: 2}
+    weight: 1
+  - item: {fileID: 11400000, guid: a01ef4fd0fc6d8a4e9e60450a0886012, type: 2}
+    weight: 1
+  rarityWeights:
+  - rarity: 0
+    weight: 60
+  - rarity: 1
+    weight: 25
+  - rarity: 2
+    weight: 12
+  - rarity: 3
+    weight: 3

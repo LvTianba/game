@@ -1,5 +1,6 @@
 using BorderValley.Core;
 using BorderValley.Data;
+using BorderValley.Inventory;
 using BorderValley.UI;
 using BorderValley.UI.Battle;
 using BorderValley.World;
@@ -19,6 +20,7 @@ namespace BorderValley.Editor
         {
             System.IO.Directory.CreateDirectory("Assets/Scenes");
             System.IO.Directory.CreateDirectory("Assets/Resources");
+            EquipmentContentBuilder.Build();
 
             const string catalogPath = "Assets/Resources/ContentCatalog.asset";
             var catalog = AssetDatabase.LoadAssetAtPath<ContentCatalog>(catalogPath);
@@ -32,10 +34,14 @@ namespace BorderValley.Editor
             var services = new GameObject("BootServices");
             var validator = services.AddComponent<ContentRuntimeValidator>();
             var bootstrapper = services.AddComponent<GameBootstrapper>();
+            var inventoryInstaller = services.AddComponent<InventoryBootstrapInstaller>();
             var bootSerialized = new SerializedObject(bootstrapper);
             var preflightProperty = bootSerialized.FindProperty("preflightChecks");
             preflightProperty.arraySize = 1;
             preflightProperty.GetArrayElementAtIndex(0).objectReferenceValue = validator;
+            var serviceInstallersProperty = bootSerialized.FindProperty("serviceInstallers");
+            serviceInstallersProperty.arraySize = 1;
+            serviceInstallersProperty.GetArrayElementAtIndex(0).objectReferenceValue = inventoryInstaller;
             bootSerialized.ApplyModifiedPropertiesWithoutUndo();
             EditorSceneManager.SaveScene(boot, "Assets/Scenes/Boot.unity");
 

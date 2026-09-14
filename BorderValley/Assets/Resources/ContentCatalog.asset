@@ -12,4 +12,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d62fc033e9c8eb54d93febb10cc9b57a, type: 3}
   m_Name: ContentCatalog
   m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.ContentCatalog
-  definitions: []
+  definitions:
+  - {fileID: 11400000, guid: ac3fe04113cb576479f91134d62eb70c, type: 2}
+  - {fileID: 11400000, guid: f0d80ad626a3cc6418c851c79653bde4, type: 2}
+  - {fileID: 11400000, guid: 95abce721d3409e43bb1d0144aadcfce, type: 2}
+  - {fileID: 11400000, guid: f2af75fad035be049a52e79a24b91c64, type: 2}
+  - {fileID: 11400000, guid: c115e4b9109b8514a88923b30134f34d, type: 2}
+  - {fileID: 11400000, guid: b9c2bc0e851a7374790822d1227e75f2, type: 2}
+  - {fileID: 11400000, guid: a0183a1af55bf6c4cbe9a5415ef87a70, type: 2}
+  - {fileID: 11400000, guid: a01ef4fd0fc6d8a4e9e60450a0886012, type: 2}
+  - {fileID: 11400000, guid: c66aeb54d7a09784f96b643150816ecd, type: 2}
+  - {fileID: 11400000, guid: 47a8796940eca9f4592f8fb99e994a2e, type: 2}
+  - {fileID: 11400000, guid: 805a2fff754da3b4da5fa96de849e2f5, type: 2}
+  - {fileID: 11400000, guid: eeadc355f962e784386b98e5fac00c0d, type: 2}
+  - {fileID: 11400000, guid: 48a99f14a0728d5479ff3363c210ee0a, type: 2}
+  - {fileID: 11400000, guid: 692d4e6e077ec7841ae6edbcc62803bb, type: 2}
+  - {fileID: 11400000, guid: 077632a1d458e5e4e8d7eaff0e9ac960, type: 2}
+  - {fileID: 11400000, guid: 731a78c0fbc6394479a11842163b095d, type: 2}
+  - {fileID: 11400000, guid: d076f81b5bb29154f8086a2ce554ba35, type: 2}
+  - {fileID: 11400000, guid: 7231275644c2ff14f98f5ebd8862b430, type: 2}
+  - {fileID: 11400000, guid: f600ea75e4077f64f8eba2aa92804ca2, type: 2}
+  - {fileID: 11400000, guid: cc209ae36b084e64aa84b7fe1baad126, type: 2}
+  - {fileID: 11400000, guid: 05c599cac7f91f84e953fdf54868ee52, type: 2}

@@ -1,4 +1,7 @@
 using System;
+using System.Linq;
+using BorderValley.Core.BattleFlow;
+
 using System.Collections.Generic;
 
 namespace BorderValley.Battle.Domain
@@ -55,6 +58,166 @@ namespace BorderValley.Battle.Domain
             return new BattleScenario(state, playerSkills, enemySkills, unitSkills);
         }
 
+        public static BattleScenario CreateCoreScenario(BattlePartySnapshot partySnapshot)
+        {
+            if (partySnapshot == null) return CreateCoreScenario();
+
+            var skills = CreateSkills();
+            var playerSkills = new Dictionary<string, SkillDefinition>(skills, StringComparer.Ordinal);
+            var enemySkills = new Dictionary<string, SkillDefinition>(skills, StringComparer.Ordinal);
+            var state = CreateSnapshotState(partySnapshot);
+            var unitSkills = CreateEnemyUnitSkills();
+
+            foreach (var member in partySnapshot.Members)
+            {
+                var unitSkillIds = new List<string>();
+                foreach (var baseSkillId in member.SkillIds.Distinct(StringComparer.Ordinal))
+                {
+                    if (!playerSkills.TryGetValue(baseSkillId, out var baseSkill))
+                        throw new ArgumentException("Snapshot skill is not present in the core catalog: " + baseSkillId);
+
+                    var modified = member.SkillModifiers
+                        .Where(modifier => modifier.SkillId == baseSkillId)
+                        .Aggregate(baseSkill, (current, modifier) =>
+                            SkillModifierApplier.Apply(current, modifier.Kind, modifier.Value));
+
+                    if (baseSkillId == "skill.basic" && ReferenceEquals(baseSkill, modified))
+                    {
+                        unitSkillIds.Add(baseSkillId);
+                        continue;
+                    }
+
+                    var unitSkillId = baseSkillId + "@" + member.UnitId;
+                    playerSkills[unitSkillId] = Rename(modified, unitSkillId);
+                    unitSkillIds.Add(unitSkillId);
+                }
+
+                unitSkills[member.UnitId] = unitSkillIds.ToArray();
+            }
+
+            return new BattleScenario(state, playerSkills, enemySkills, unitSkills);
+        }
+
+        private static BattleState CreateSnapshotState(BattlePartySnapshot partySnapshot)
+        {
+            const int width = 8;
+            const int height = 6;
+            var cells = new TerrainType[width * height];
+            Array.Fill(cells, TerrainType.Plain);
+            cells[2 * width + 3] = TerrainType.HighGround;
+            cells[3 * width + 4] = TerrainType.HighGround;
+            cells[3 * width + 3] = TerrainType.Mud;
+            cells[2 * width + 4] = TerrainType.Mud;
+            var state = new BattleState(new BattleMap(width, height, cells));
+
+            foreach (var member in partySnapshot.Members)
+                AddSnapshotPlayer(state, member);
+
+            state.AddUnit(CreateUnit(
+                "enemy.bandit",
+                "unit.bandit",
+                Team.Enemy,
+                20,
+                0,
+                8,
+                3,
+                5,
+                0.05f,
+                1,
+                new GridPosition(5, 2)));
+            state.AddUnit(CreateUnit(
+                "enemy.ranger",
+                "unit.ranger",
+                Team.Enemy,
+                18,
+                10,
+                10,
+                3,
+                7,
+                0.15f,
+                2,
+                new GridPosition(6, 2)));
+            state.AddUnit(CreateUnit(
+                "enemy.mage",
+                "unit.mage",
+                Team.Enemy,
+                15,
+                16,
+                11,
+                1,
+                5,
+                0.05f,
+                6,
+                new GridPosition(6, 3)));
+
+            return state;
+        }
+
+        private static void AddSnapshotPlayer(BattleState state, BattleCombatantSnapshot member)
+        {
+            var position = PlayerPosition(member.ClassId);
+            if (state.OccupiedPositions.Contains(position))
+                throw new ArgumentException("Party snapshot contains overlapping player positions.", nameof(member));
+
+            var unit = new BattleUnit(
+                member.UnitId,
+                member.DefinitionId,
+                Team.Player,
+                new UnitStats(
+                    member.MaxHealth,
+                    member.MaxMana,
+                    member.Power,
+                    member.Armor,
+                    member.Speed,
+                    member.CritChanceBps / 10000f,
+                    member.Resistance),
+                position,
+                member.Passives);
+            unit.SetCurrentResources(member.CurrentHealth, member.CurrentMana);
+            state.AddUnit(unit);
+        }
+
+        private static GridPosition PlayerPosition(string classId)
+        {
+            return classId switch
+            {
+                "class.warrior" => new GridPosition(2, 2),
+                "class.ranger" => new GridPosition(1, 2),
+                "class.mage" => new GridPosition(1, 3),
+                _ => new GridPosition(2, 3)
+            };
+        }
+
+        private static SkillDefinition Rename(SkillDefinition skill, string id) =>
+            new(
+                id,
+                skill.LocalizationKey,
+                skill.Targeting,
+                skill.Range,
+                skill.Radius,
+                skill.Mana,
+                skill.Cooldown,
+                skill.Effects.ToArray());
+
+        private static Dictionary<string, string[]> CreateEnemyUnitSkills() =>
+            new(StringComparer.Ordinal)
+            {
+                ["enemy.bandit"] = new[] { "skill.basic" },
+                ["enemy.ranger"] = new[]
+                {
+                    "skill.piercing_shot",
+                    "skill.snare",
+                    "skill.twin_shot",
+                    "skill.basic"
+                },
+                ["enemy.mage"] = new[]
+                {
+                    "skill.fireball",
+                    "skill.frost_nova",
+                    "skill.arcane_ward",
+                    "skill.basic"
+                }
+            };
         private static BattleState CreateState()
         {
             const int width = 8;

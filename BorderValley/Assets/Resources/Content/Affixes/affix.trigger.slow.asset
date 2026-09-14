@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a6f82bd91b94350960d7aec0f650ea4, type: 3}
+  m_Name: affix.trigger.slow
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Items.AffixDefinition
+  id: affix.trigger.slow
+  localizationKey: affix.trigger.slow.name
+  compatibleSlots: 000000000400000002000000030000000100000005000000i
+  minimumRarity: 1
+  effectKind: 3
+  stat: 2
+  skillModifier: 0
+  targetSkillId: 
+  passiveEffect: 0
+  minValue: 1
+  maxValue: 1
+  minItemLevel: 1
+  duration: 2
+  weight: 5
+  budgetCost: 4
+  budgetCostKey: 
+  mutuallyExclusiveAffixIds: []
