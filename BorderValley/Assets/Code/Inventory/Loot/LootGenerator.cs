@@ -53,18 +53,10 @@ namespace BorderValley.Inventory
             if (item == null) throw new ArgumentNullException(nameof(item));
             if (random == null) throw new ArgumentNullException(nameof(random));
 
-            var count = rarity switch
-            {
-                ItemRarity.Common => 0,
-                ItemRarity.Fine => 1,
-                ItemRarity.Rare => 2,
-                ItemRarity.Epic => 3,
-                _ => throw new ArgumentOutOfRangeException(nameof(rarity))
-            };
+            var count = ItemRules.AffixCount(rarity);
 
             var eligible = affixes.Values
-                .Where(affix => affix != null && affix.Weight > 0 &&
-                                affix.Supports(item.Slot, rarity, itemLevel))
+                .Where(affix => ItemRules.IsEligible(affix, item.Slot, rarity, itemLevel))
                 .OrderBy(affix => affix.Id, StringComparer.Ordinal)
                 .ToArray();
             var chosen = SelectAffixes(eligible, count, rarity, random);
@@ -80,7 +72,7 @@ namespace BorderValley.Inventory
         {
             if (count == 0) return Array.Empty<AffixDefinition>();
 
-            var requiresSpecial = rarity == ItemRarity.Epic && eligible.Any(IsSpecial);
+            var requiresSpecial = rarity == ItemRarity.Epic && eligible.Any(ItemRules.IsSpecial);
             var chosen = new List<AffixDefinition>(count);
             if (TrySelectAffixes(eligible, count, requiresSpecial, chosen, random))
                 return chosen.AsReadOnly();
@@ -97,14 +89,14 @@ namespace BorderValley.Inventory
             IRandomSource random)
         {
             if (chosen.Count == count)
-                return !requiresSpecial || chosen.Any(IsSpecial);
+                return !requiresSpecial || chosen.Any(ItemRules.IsSpecial);
 
             var remaining = count - chosen.Count;
             var candidates = eligible
-                .Where(candidate => chosen.All(existing => !Conflicts(existing, candidate)))
+                .Where(candidate => chosen.All(existing => !ItemRules.Conflicts(existing, candidate)))
                 .ToArray();
             if (candidates.Length < remaining) return false;
-            if (requiresSpecial && !chosen.Any(IsSpecial) && !candidates.Any(IsSpecial))
+            if (requiresSpecial && !chosen.Any(ItemRules.IsSpecial) && !candidates.Any(ItemRules.IsSpecial))
                 return false;
 
             foreach (var candidate in WeightedOrder(candidates, random))
@@ -131,18 +123,11 @@ namespace BorderValley.Inventory
             }
         }
 
-        private static bool IsSpecial(AffixDefinition affix) =>
-            affix.EffectKind is AffixEffectKind.SkillModifier or AffixEffectKind.Trigger;
         private ItemDefinition ResolveItem(ItemDefinition item)
         {
             if (item == null) throw new InvalidOperationException("Loot entry has no item.");
             return items.TryGetValue(item.Id, out var definition) ? definition : item;
         }
-
-        private static bool Conflicts(AffixDefinition existing, AffixDefinition candidate) =>
-            existing.Id == candidate.Id ||
-            existing.IsMutuallyExclusive(candidate.Id) ||
-            candidate.IsMutuallyExclusive(existing.Id);
 
         private static ItemRarity RollRarity(ItemDropTableDefinition table, IRandomSource random) =>
             Weighted(
@@ -183,22 +168,15 @@ namespace BorderValley.Inventory
             ItemRarity rarity,
             IRandomSource random)
         {
-            var remaining = rarity switch
-            {
-                ItemRarity.Common => 0,
-                ItemRarity.Fine => 12,
-                ItemRarity.Rare => 24,
-                ItemRarity.Epic => 40,
-                _ => throw new ArgumentOutOfRangeException(nameof(rarity))
-            };
+            var remaining = ItemRules.Budget(rarity);
             var result = new List<AffixInstance>(chosen.Count);
             foreach (var affix in chosen)
             {
                 var value = random.Range(affix.MinValue, affix.MaxValue + 1);
-                while (value != affix.MinValue && Cost(value, affix) > remaining)
+                while (value != affix.MinValue && ItemRules.ValueCost(value, affix) > remaining)
                     value += value > affix.MinValue ? -1 : 1;
 
-                var cost = Cost(value, affix);
+                var cost = ItemRules.ValueCost(value, affix);
                 if (cost > remaining)
                     throw new InvalidOperationException($"Affix budget exceeded by {affix.Id}.");
                 remaining -= cost;
@@ -207,8 +185,5 @@ namespace BorderValley.Inventory
 
             return result.AsReadOnly();
         }
-
-        private static int Cost(int value, AffixDefinition affix) =>
-            Math.Max(1, Math.Abs(value)) * affix.BudgetCost;
     }
 }

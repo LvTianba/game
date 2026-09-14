@@ -9,13 +9,23 @@ namespace BorderValley.Inventory
     {
         private readonly InventoryService inventory;
         private readonly IReadOnlyDictionary<string, ItemDefinition> definitions;
+        private readonly IReadOnlyDictionary<string, AffixDefinition> affixes;
 
         public EconomyService(
             InventoryService inventory,
             IReadOnlyDictionary<string, ItemDefinition> definitions)
+            : this(inventory, definitions, null)
+        {
+        }
+
+        public EconomyService(
+            InventoryService inventory,
+            IReadOnlyDictionary<string, ItemDefinition> definitions,
+            IReadOnlyDictionary<string, AffixDefinition> affixes)
         {
             this.inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             this.definitions = definitions ?? throw new ArgumentNullException(nameof(definitions));
+            this.affixes = affixes ?? new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
         }
 
         public int GetBuyPrice(ItemInstance item)
@@ -33,7 +43,7 @@ namespace BorderValley.Inventory
                 _ => 1
             };
             var affixValue = item.Affixes.Sum(affix => Math.Abs(affix.Value) * 2);
-            return Math.Max(1, definition.BaseValue * item.ItemLevel * rarityMultiplier / 10 + affixValue);
+            return Math.Max(2, definition.BaseValue * item.ItemLevel * rarityMultiplier / 10 + affixValue);
         }
 
         public int GetSellPrice(ItemInstance item) => Math.Max(1, GetBuyPrice(item) * 2 / 5);
@@ -79,9 +89,15 @@ namespace BorderValley.Inventory
         public bool TryBuy(ItemInstance item, out string error)
         {
             if (item == null) throw new ArgumentNullException(nameof(item));
-            if (!definitions.ContainsKey(item.ItemDefinitionId))
+            if (!definitions.TryGetValue(item.ItemDefinitionId, out var definition))
             {
                 error = InventoryTextKeys.UnknownDefinition;
+                return false;
+            }
+
+            if (!ItemRules.TryValidate(item, definition, affixes, out _))
+            {
+                error = InventoryTextKeys.InvalidItem;
                 return false;
             }
 

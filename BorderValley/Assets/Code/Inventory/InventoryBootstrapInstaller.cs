@@ -45,7 +45,7 @@ namespace BorderValley.Inventory
             var snapshotBuilder = new PartyBattleSnapshotBuilder(progression, inventory, items, affixes);
             var lootGenerator = new LootGenerator(items, affixes);
             var craftingCosts = new CraftingCosts();
-            var economy = new EconomyService(inventory, items);
+            var economy = new EconomyService(inventory, items, affixes);
             var crafting = new CraftingService(inventory, items, affixes, lootGenerator, craftingCosts);
             context.Register(inventory);
             context.Register(progression);

@@ -10,6 +10,7 @@ namespace BorderValley.Inventory
         public const string SlotEmpty = "inventory.ui.error.slot_empty";
         public const string NotEnoughGold = "inventory.ui.error.not_enough_gold";
         public const string NotEnoughMaterials = "inventory.ui.error.not_enough_materials";
+        public const string InvalidItem = "inventory.ui.error.invalid_item";
         public const string EquippedCannotSell = "inventory.ui.error.equipped_cannot_sell";
         public const string QuestCannotSell = "inventory.ui.error.quest_cannot_sell";
         public const string EquippedCannotDismantle = "inventory.ui.error.equipped_cannot_dismantle";

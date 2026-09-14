@@ -23,9 +23,11 @@ namespace BorderValley.Inventory.Tests
         public void SetUp()
         {
             AddItem("item.sword", 100, false);
+            AddItem("item.boundary", 0, false);
             AddItem("item.axe", 200, false);
             AddItem("item.quest", 100, true);
             AddAffix("affix.power", minValue: 1, maxValue: 5);
+            AddAffix("affix.crit", minValue: 1, maxValue: 5);
             AddAffix("affix.armor", minValue: 1, maxValue: 5);
             AddAffix("affix.speed", minValue: 1, maxValue: 5, mutuallyExclusive: "affix.armor");
             AddAffix("affix.armor", minValue: 1, maxValue: 5, mutuallyExclusive: "affix.speed");
@@ -58,6 +60,16 @@ namespace BorderValley.Inventory.Tests
             Assert.That(economy.GetBuyPrice(affixed), Is.GreaterThan(economy.GetSellPrice(affixed)));
         }
 
+        [Test]
+        public void GetPrices_AtMinimumBoundary_KeepBuyStrictlyAboveSell()
+        {
+            var economy = new EconomyService(new InventoryService(10, items, 0), items, affixes);
+            var boundary = Item("boundary", "item.boundary", ItemRarity.Common, 1);
+
+            Assert.That(economy.GetBuyPrice(boundary), Is.EqualTo(2));
+            Assert.That(economy.GetSellPrice(boundary), Is.EqualTo(1));
+            Assert.That(economy.GetBuyPrice(boundary), Is.GreaterThan(economy.GetSellPrice(boundary)));
+        }
         [Test]
         public void GetBuyPrice_IsMonotonicAcrossBaseValueLevelRarityAndAffixValue()
         {
@@ -134,6 +146,93 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void Buy_WithValidItem_SpendsGoldAndAddsItem()
+        {
+            var inventory = new InventoryService(10, items, 100);
+            var economy = new EconomyService(inventory, items, affixes);
+            var item = Item("i1", "item.sword", ItemRarity.Fine, 1,
+                new AffixInstance("affix.power", 1));
+
+            Assert.That(economy.TryBuy(item, out var error), Is.True);
+            Assert.That(error, Is.Empty);
+            Assert.That(inventory.Gold, Is.EqualTo(78));
+            Assert.That(inventory.GetItem("i1"), Is.SameAs(item));
+        }
+
+        [Test]
+        public void Buy_RejectsCommonItemWithAffixes()
+        {
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Common, 1,
+                new AffixInstance("affix.power", 1)));
+        }
+
+        [Test]
+        public void Buy_RejectsEpicItemWithTooFewAffixes()
+        {
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Epic, 1,
+                new AffixInstance("affix.power", 1),
+                new AffixInstance("affix.armor", 1)));
+        }
+
+        [Test]
+        public void Buy_RejectsDuplicateAffixes()
+        {
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance("affix.power", 1),
+                new AffixInstance("affix.power", 2)));
+        }
+
+        [Test]
+        public void Buy_RejectsMutuallyExclusiveAffixes()
+        {
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance("affix.speed", 1),
+                new AffixInstance("affix.armor", 1)));
+        }
+
+        [Test]
+        public void Buy_RejectsAffixesThatFailSlotRarityOrItemLevelEligibility()
+        {
+            var offhand = AddAffix("affix.offhand", slot: ItemSlot.Offhand);
+            var highLevel = AddAffix("affix.high.level", minItemLevel: 5);
+
+            AssertRejectedBuy(Item("slot", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance("affix.power", 1),
+                new AffixInstance(offhand.Id, 1)));
+            AssertRejectedBuy(Item("rarity", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance("affix.power", 1),
+                new AffixInstance("affix.epic.special", 1)));
+            AssertRejectedBuy(Item("level", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance("affix.power", 1),
+                new AffixInstance(highLevel.Id, 1)));
+        }
+
+        [Test]
+        public void Buy_RejectsEpicItemWithoutRequiredSpecialAffix()
+        {
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Epic, 1,
+                new AffixInstance("affix.power", 1),
+                new AffixInstance("affix.armor", 1),
+                new AffixInstance("affix.crit", 1)));
+        }
+
+        [Test]
+        public void Buy_RejectsAffixValueOutsideDefinitionRange()
+        {
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance("affix.power", 99),
+                new AffixInstance("affix.armor", 1)));
+        }
+
+        [Test]
+        public void Buy_RejectsAffixSetThatExceedsRarityBudget()
+        {
+            var expensive = AddAffix("affix.expensive", minValue: 1, maxValue: 30);
+            AssertRejectedBuy(Item("i1", "item.sword", ItemRarity.Rare, 1,
+                new AffixInstance(expensive.Id, 24),
+                new AffixInstance("affix.armor", 1)));
+        }
+        [Test]
         public void CraftingCosts_UsePrescribedValues()
         {
             var costs = new CraftingCosts();
@@ -196,6 +295,23 @@ namespace BorderValley.Inventory.Tests
             Assert.That(inventory.GetItem("craft.1"), Is.SameAs(result.Item));
         }
 
+        [Test]
+        public void Craft_WithItemLevelAboveTen_NormalizesBeforeCostAndGeneration()
+        {
+            var inventory = new InventoryService(10, items, 1000);
+            inventory.AddMaterial("material.ore", 10);
+            var crafting = new CraftingService(inventory, items, affixes, Generator(), new CraftingCosts());
+
+            var result = crafting.Craft("craft.1", items["item.sword"], "class.warrior", 25,
+                new FixedRandomSource(2));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Item.ItemLevel, Is.EqualTo(10));
+            Assert.That(result.GoldCost, Is.EqualTo(130));
+            Assert.That(result.MaterialCost, Is.EqualTo(7));
+            Assert.That(inventory.Gold, Is.EqualTo(870));
+            Assert.That(inventory.Materials["material.ore"], Is.EqualTo(3));
+        }
         [Test]
         public void Craft_WhenGenerationFails_RollsBackGoldAndMaterials()
         {
@@ -468,6 +584,16 @@ namespace BorderValley.Inventory.Tests
             Assert.That(participants.OfType<CraftingService>(), Is.Empty);
         }
 
+        private void AssertRejectedBuy(ItemInstance item)
+        {
+            var inventory = new InventoryService(10, items, 100);
+            var economy = new EconomyService(inventory, items, affixes);
+
+            Assert.That(economy.TryBuy(item, out var error), Is.False);
+            Assert.That(error, Is.EqualTo(InventoryTextKeys.InvalidItem));
+            Assert.That(inventory.Gold, Is.EqualTo(100));
+            Assert.That(inventory.Items, Is.Empty);
+        }
         private ItemDefinition AddItem(string id, int baseValue, bool isQuestItem)
         {
             var item = Track(ScriptableObject.CreateInstance<ItemDefinition>());
@@ -490,13 +616,14 @@ namespace BorderValley.Inventory.Tests
             int minValue = 1,
             int maxValue = 5,
             int minItemLevel = 1,
-            string mutuallyExclusive = null)
+            string mutuallyExclusive = null,
+            ItemSlot slot = ItemSlot.Weapon)
         {
             var affix = Track(ScriptableObject.CreateInstance<AffixDefinition>());
             affix.EditorConfigure(
                 id,
                 id + ".name",
-                new[] { ItemSlot.Weapon },
+                new[] { slot },
                 minRarity,
                 effectKind,
                 CombatStat.Power,

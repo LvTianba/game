@@ -53,10 +53,11 @@ namespace BorderValley.Inventory
             if (inventory.Items.Count >= inventory.Capacity)
                 return CraftingResult.Failure(InventoryTextKeys.BagFull);
 
+            var level = Math.Clamp(itemLevel, 1, 10);
             var local = random.Fork("craft:" + instanceId);
             var rarity = RollRarity(local);
-            var goldCost = costs.CraftGold(itemLevel, rarity);
-            var materialCost = costs.CraftMaterial(itemLevel, rarity);
+            var goldCost = costs.CraftGold(level, rarity);
+            var materialCost = costs.CraftMaterial(level, rarity);
 
             if (!CanSpend(goldCost, materialCost, out var spendError))
                 return CraftingResult.Failure(spendError);
@@ -69,10 +70,10 @@ namespace BorderValley.Inventory
                 var item = generator.GenerateForItem(
                     instanceId,
                     itemDefinition,
-                    itemLevel,
+                    level,
                     rarity,
                     local.Fork("item"));
-                if (!TryValidateAffixes(item.Affixes, itemDefinition.Slot, rarity, itemLevel, out _))
+                if (!ItemRules.TryValidate(item, itemDefinition, affixes, out _))
                     return RollbackFailure(goldCost, materialCost, InventoryTextKeys.CraftingFailed);
 
                 if (!inventory.TryAdd(item, out var addError))
@@ -120,15 +121,16 @@ namespace BorderValley.Inventory
                 return CraftingResult.Failure(InventoryTextKeys.UnknownDefinition);
 
             var locksAffix = !string.IsNullOrWhiteSpace(lockedAffixId);
-            if (locksAffix && AffixCount(item.Rarity) == 0)
+            if (locksAffix && ItemRules.AffixCount(item.Rarity) == 0)
                 return CraftingResult.Failure(InventoryTextKeys.ReforgeFailed);
+
             AffixInstance locked = null;
             if (locksAffix)
             {
                 locked = item.Affixes.FirstOrDefault(value => value.AffixId == lockedAffixId);
                 if (locked == null)
                     return CraftingResult.Failure(InventoryTextKeys.LockedAffixNotFound);
-                if (!IsEligible(locked, definition.Slot, item.Rarity, item.ItemLevel))
+                if (!ItemRules.IsEligible(locked, definition.Slot, item.Rarity, item.ItemLevel, affixes))
                     return CraftingResult.Failure(InventoryTextKeys.ReforgeFailed);
             }
 
@@ -142,7 +144,13 @@ namespace BorderValley.Inventory
             try
             {
                 var values = GenerateReforgedAffixes(item, definition, locked, random);
-                if (!TryValidateAffixes(values, definition.Slot, item.Rarity, item.ItemLevel, out _))
+                if (!ItemRules.TryValidateAffixes(
+                        values,
+                        definition.Slot,
+                        item.Rarity,
+                        item.ItemLevel,
+                        affixes,
+                        out _))
                     return RollbackFailure(goldCost, materialCost, InventoryTextKeys.ReforgeFailed);
 
                 item.ReplaceAffixes(values);
@@ -161,7 +169,7 @@ namespace BorderValley.Inventory
             AffixInstance locked,
             IRandomSource random)
         {
-            var count = AffixCount(item.Rarity);
+            var count = ItemRules.AffixCount(item.Rarity);
             if (count == 0)
                 return Array.Empty<AffixInstance>();
             if (locked != null && count == 1)
@@ -180,11 +188,12 @@ namespace BorderValley.Inventory
                         item.Rarity,
                         local.Fork("attempt:" + attempt));
                     var values = Combine(locked, generated.Affixes, count);
-                    if (values != null && TryValidateAffixes(
+                    if (values != null && ItemRules.TryValidateAffixes(
                             values,
                             definition.Slot,
                             item.Rarity,
                             item.ItemLevel,
+                            affixes,
                             out _))
                         return values;
                 }
@@ -209,11 +218,12 @@ namespace BorderValley.Inventory
             foreach (var value in generated)
             {
                 if (locked != null &&
-                    (value.AffixId == locked.AffixId || Conflicts(locked.AffixId, value.AffixId)))
+                    (value.AffixId == locked.AffixId ||
+                     ItemRules.Conflicts(locked.AffixId, value.AffixId, affixes)))
                     continue;
                 if (result.Any(existing =>
                         existing.AffixId == value.AffixId ||
-                        Conflicts(existing.AffixId, value.AffixId)))
+                        ItemRules.Conflicts(existing.AffixId, value.AffixId, affixes)))
                     continue;
 
                 result.Add(value);
@@ -223,116 +233,6 @@ namespace BorderValley.Inventory
 
             return result.Count == count ? result.AsReadOnly() : null;
         }
-
-        private bool TryValidateAffixes(
-            IReadOnlyList<AffixInstance> values,
-            ItemSlot slot,
-            ItemRarity rarity,
-            int itemLevel,
-            out string error)
-        {
-            var expected = AffixCount(rarity);
-            if (values == null || values.Count != expected)
-            {
-                error = "invalid_affix_count";
-                return false;
-            }
-
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var totalCost = 0;
-            var hasSpecial = false;
-            var requiresSpecial = rarity == ItemRarity.Epic && affixes.Values.Any(affix =>
-                affix != null && affix.Weight > 0 &&
-                affix.Supports(slot, rarity, itemLevel) &&
-                IsSpecial(affix));
-
-            foreach (var value in values)
-            {
-                if (value == null || !seen.Add(value.AffixId))
-                {
-                    error = "duplicate_or_null_affix";
-                    return false;
-                }
-
-                if (!affixes.TryGetValue(value.AffixId, out var definition) ||
-                    !IsEligible(value, slot, rarity, itemLevel))
-                {
-                    error = "ineligible_affix";
-                    return false;
-                }
-
-                if (seen.Any(existing => existing != value.AffixId && Conflicts(existing, value.AffixId)))
-                {
-                    error = "mutually_exclusive_affix";
-                    return false;
-                }
-
-                hasSpecial |= IsSpecial(definition);
-                totalCost += Math.Max(1, Math.Abs(value.Value)) * definition.BudgetCost;
-            }
-
-            if (requiresSpecial && !hasSpecial)
-            {
-                error = "missing_special_affix";
-                return false;
-            }
-
-            if (totalCost > Budget(rarity))
-            {
-                error = "affix_budget_exceeded";
-                return false;
-            }
-
-            error = string.Empty;
-            return true;
-        }
-
-        private bool IsEligible(AffixInstance value, ItemSlot slot, ItemRarity rarity, int itemLevel)
-        {
-            if (value == null || !affixes.TryGetValue(value.AffixId, out var definition)) return false;
-            return value.Value >= definition.MinValue &&
-                   value.Value <= definition.MaxValue &&
-                   IsEligible(definition, slot, rarity, itemLevel);
-        }
-
-        private static bool IsEligible(
-            AffixDefinition definition,
-            ItemSlot slot,
-            ItemRarity rarity,
-            int itemLevel) =>
-            definition != null &&
-            definition.Weight > 0 &&
-            definition.Supports(slot, rarity, itemLevel);
-
-        private bool Conflicts(string first, string second)
-        {
-            if (first == second) return true;
-            if (!affixes.TryGetValue(first, out var firstDefinition)) return true;
-            if (!affixes.TryGetValue(second, out var secondDefinition)) return true;
-            return firstDefinition.IsMutuallyExclusive(second) ||
-                   secondDefinition.IsMutuallyExclusive(first);
-        }
-
-        private static bool IsSpecial(AffixDefinition definition) =>
-            definition.EffectKind is AffixEffectKind.SkillModifier or AffixEffectKind.Trigger;
-
-        private static int AffixCount(ItemRarity rarity) => rarity switch
-        {
-            ItemRarity.Common => 0,
-            ItemRarity.Fine => 1,
-            ItemRarity.Rare => 2,
-            ItemRarity.Epic => 3,
-            _ => throw new ArgumentOutOfRangeException(nameof(rarity))
-        };
-
-        private static int Budget(ItemRarity rarity) => rarity switch
-        {
-            ItemRarity.Common => 0,
-            ItemRarity.Fine => 12,
-            ItemRarity.Rare => 24,
-            ItemRarity.Epic => 40,
-            _ => throw new ArgumentOutOfRangeException(nameof(rarity))
-        };
 
         private static ItemRarity RollRarity(IRandomSource random) =>
             (ItemRarity)random.Range(0, 4);
