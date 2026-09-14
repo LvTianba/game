@@ -43,9 +43,17 @@ namespace BorderValley.Inventory
             var inventory = new InventoryService(30, items, 100);
             var progression = new PartyProgressionService(characters, CreateInitialParty(characters));
             var snapshotBuilder = new PartyBattleSnapshotBuilder(progression, inventory, items, affixes);
+            var lootGenerator = new LootGenerator(items, affixes);
+            var craftingCosts = new CraftingCosts();
+            var economy = new EconomyService(inventory, items);
+            var crafting = new CraftingService(inventory, items, affixes, lootGenerator, craftingCosts);
             context.Register(inventory);
             context.Register(progression);
             context.Register(snapshotBuilder);
+            context.Register(lootGenerator);
+            context.Register(craftingCosts);
+            context.Register(economy);
+            context.Register(crafting);
             context.Register<IReadOnlyDictionary<string, ItemDefinition>>(items);
             context.Register<IReadOnlyDictionary<string, CharacterDefinition>>(characters);
             context.Register<IReadOnlyDictionary<string, AffixDefinition>>(affixes);
