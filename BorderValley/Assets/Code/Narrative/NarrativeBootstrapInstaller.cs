@@ -32,11 +32,12 @@ namespace BorderValley.Narrative
                 .OfType<QuestDefinition>()
                 .ToDictionary(quest => quest.Id, StringComparer.Ordinal);
             var questService = new QuestService(quests, state, inventory, rewardService);
-
+            var dialogueService = new DialogueService(catalog.All, state, questService, inventory, progression);
             context.Register(state);
             context.Register<IQuestRewardService>(rewardService);
             context.Register(rewardService);
             context.Register(questService);
+            context.Register(dialogueService);
             participants.Add(state);
         }
     }

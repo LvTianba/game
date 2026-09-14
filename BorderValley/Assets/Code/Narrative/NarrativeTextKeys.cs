@@ -8,7 +8,13 @@ namespace BorderValley.Narrative
         public const string UnknownOffer = "narrative.error.unknown_offer";
         public const string UnknownEvent = "narrative.error.unknown_event";
         public const string UnknownInteractable = "narrative.error.unknown_interactable";
+        public const string UnknownDialogue = "narrative.error.unknown_dialogue";
         public const string UnknownDialogueNode = "narrative.error.unknown_dialogue_node";
+        public const string NoAvailableDialogueNode = "narrative.error.no_available_dialogue_node";
+        public const string InvalidDialogueChoice = "narrative.error.invalid_dialogue_choice";
+        public const string InvalidDialogueAction = "narrative.error.invalid_dialogue_action";
+        public const string DialogueComplete = "narrative.error.dialogue_complete";
+        public const string DialogueSessionRequired = "narrative.error.dialogue_session_required";
         public const string InvalidPosition = "narrative.error.invalid_position";
 
         public const string QuestNotFound = "narrative.quest.not_found";
