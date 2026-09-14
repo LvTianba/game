@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
+using BorderValley.Core.Persistence;
+using BorderValley.Core.Random;
 using BorderValley.Core.SceneManagement;
 using BorderValley.Data.Items;
 using BorderValley.Inventory;
@@ -23,6 +25,10 @@ namespace BorderValley.UI.Battle
         private CraftingService crafting;
         private CraftingCosts costs;
         private IReadOnlyDictionary<string, AffixDefinition> affixDefinitions;
+        private LootGenerator lootGenerator;
+        private EconomyService economy;
+        private ItemDropTableDefinition banditDropTable;
+        private SaveService saveService;
 
         public Button InventoryButton { get; private set; }
         public Button CraftButton { get; private set; }
@@ -48,6 +54,10 @@ namespace BorderValley.UI.Battle
                 GameBootstrapper.Context.TryGet(out crafting);
                 GameBootstrapper.Context.TryGet(out costs);
                 GameBootstrapper.Context.TryGet(out affixDefinitions);
+                GameBootstrapper.Context.TryGet(out lootGenerator);
+                GameBootstrapper.Context.TryGet(out economy);
+                GameBootstrapper.Context.TryGet(out banditDropTable);
+                GameBootstrapper.Context.TryGet(out saveService);
             }
 
             var canvasObject = CreateCanvas();
@@ -55,16 +65,25 @@ namespace BorderValley.UI.Battle
             CreateButtons(canvasObject.transform);
             CreateInventoryPanel(canvasObject.transform);
             RefreshPartyLabel();
+            ConsumePendingResult();
+        }
 
-            if (flow.TryTakeResult(out var result))
-            {
-                ResultLabel.text = result.Outcome switch
-                {
-                    BattleFlowOutcome.PlayerVictory => "battle.result.player_victory",
-                    BattleFlowOutcome.EnemyVictory => "battle.result.enemy_victory",
-                    _ => "battle.result.in_progress"
-                };
-            }
+        private void OnEnable()
+        {
+            if (flow != null)
+                ConsumePendingResult();
+        }
+
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (!pauseStatus || GameBootstrapper.Context == null)
+                return;
+
+            if (saveService == null && !GameBootstrapper.Context.TryGet(out saveService))
+                return;
+
+            if (!TrySaveWorld() && ResultLabel != null)
+                ResultLabel.text = "save.error.autosave_failed";
         }
 
         private void OnDestroy()
@@ -115,7 +134,71 @@ namespace BorderValley.UI.Battle
                 progression,
                 crafting,
                 costs,
-                affixDefinitions);
+                affixDefinitions,
+                economy,
+                _ => TrySaveWorld());
+        }
+
+        public bool ConsumePendingResultForTests() => ConsumePendingResult();
+
+        private bool ConsumePendingResult()
+        {
+            if (flow == null || progression == null || !flow.TryTakeResult(out var result))
+                return false;
+
+            progression.ApplyBattleUnitStates(result.UnitStates);
+            var autosaveFailed = false;
+            if (result.Outcome == BattleFlowOutcome.PlayerVictory)
+            {
+                var rewardSeed = $"reward:{progression.SafePointId}:{result.Rounds}:{progression.TotalExperience}";
+                var random = RandomSourceFactory.FromSeed(rewardSeed);
+                var loot = lootGenerator.Generate(
+                    $"loot.{System.Guid.NewGuid():N}",
+                    banditDropTable,
+                    progression.HighestLevel,
+                    random);
+                inventory.TryAdd(loot, out _);
+                inventory.AddGold(25 + result.Rounds * 5);
+                progression.AwardExperience(35 + result.Rounds * 5);
+                autosaveFailed = !TrySaveWorld();
+            }
+            else if (result.Outcome == BattleFlowOutcome.EnemyVictory)
+            {
+                progression.ReturnToSafePoint();
+                autosaveFailed = !TrySaveWorld();
+            }
+
+            RefreshResultAndPartyLabels(result, autosaveFailed);
+            return true;
+        }
+
+        private bool TrySaveWorld()
+        {
+            if (saveService == null)
+                return false;
+
+            try
+            {
+                saveService.Save(0, "World");
+                return true;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+        }
+
+        private void RefreshResultAndPartyLabels(BattleResult result, bool autosaveFailed)
+        {
+            ResultLabel.text = autosaveFailed
+                ? "save.error.autosave_failed"
+                : result.Outcome switch
+                {
+                    BattleFlowOutcome.PlayerVictory => "battle.result.player_victory",
+                    BattleFlowOutcome.EnemyVictory => "battle.result.enemy_victory",
+                    _ => "battle.result.in_progress"
+                };
+            RefreshPartyLabel();
         }
 
         private void StartBattle()
@@ -152,9 +235,11 @@ namespace BorderValley.UI.Battle
                 return;
             }
 
-            PartyHealthLabel.text = string.Join(
-                "  ",
-                progression.Members.Select(member => member.MemberId + " " + member.CurrentHealth));
+            PartyHealthLabel.text =
+                progression.SafePointId + "  " +
+                string.Join(
+                    "  ",
+                    progression.Members.Select(member => member.MemberId + " " + member.CurrentHealth));
         }
 
         private GameObject CreateCanvas()

@@ -68,6 +68,11 @@ namespace BorderValley.Core.Persistence
                         File.Move(temporary, primary);
                         break;
                     case SaveFileState.Valid:
+                        if (FilesHaveSamePayload(temporary, primary))
+                        {
+                            TryDeleteFile(temporary);
+                            break;
+                        }
                         File.Replace(temporary, primary, backup);
                         break;
                     case SaveFileState.Invalid:
@@ -190,6 +195,19 @@ namespace BorderValley.Core.Persistence
         {
             if (slot < 0 || slot > 3) throw new ArgumentOutOfRangeException(nameof(slot));
             return Path.Combine(root, $"slot-{slot}.json");
+        }
+
+        private bool FilesHaveSamePayload(string left, string right)
+        {
+            var leftData = ReadValidSaveData(left);
+            var rightData = ReadValidSaveData(right);
+            return leftData != null &&
+                   rightData != null &&
+                   leftData.SchemaVersion == rightData.SchemaVersion &&
+                   string.Equals(leftData.SceneName, rightData.SceneName, StringComparison.Ordinal) &&
+                   JToken.DeepEquals(
+                       JObject.FromObject(leftData.Participants),
+                       JObject.FromObject(rightData.Participants));
         }
 
         private static void TryDeleteFile(string path)

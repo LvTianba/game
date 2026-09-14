@@ -38,6 +38,23 @@ namespace BorderValley.Core.Tests
         }
 
         [Test]
+        public void Save_WhenPayloadUnchanged_PreservesExistingBackup()
+        {
+            var participant = new FakeParticipant { Value = 11 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "World");
+            participant.Value = 22;
+            service.Save(0, "Forest");
+            service.Save(0, "Forest");
+            File.WriteAllText(service.GetPrimaryPathForTests(0), "{broken");
+
+            participant.Reset();
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(11));
+            Assert.That(participant.CurrentScene, Is.EqualTo("World"));
+        }
+
+        [Test]
         public void Save_WhenPrimaryIsCorrupt_PreservesExistingBackup()
         {
             var participant = new FakeParticipant { Value = 11 };

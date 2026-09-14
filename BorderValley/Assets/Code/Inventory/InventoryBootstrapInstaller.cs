@@ -20,6 +20,7 @@ namespace BorderValley.Inventory
             var items = new Dictionary<string, ItemDefinition>(StringComparer.Ordinal);
             var characters = new Dictionary<string, CharacterDefinition>(StringComparer.Ordinal);
             var affixes = new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
+            var banditDropTable = default(ItemDropTableDefinition);
             var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
             if (catalog != null)
             {
@@ -36,9 +37,16 @@ namespace BorderValley.Inventory
                         case AffixDefinition affix:
                             affixes[affix.Id] = affix;
                             break;
+                        case ItemDropTableDefinition dropTable when
+                            string.Equals(dropTable.Id, "loot.bandit.core", StringComparison.Ordinal):
+                            banditDropTable = dropTable;
+                            break;
                     }
                 }
             }
+
+            if (banditDropTable == null)
+                throw new InvalidOperationException("Required drop table 'loot.bandit.core' is missing.");
 
             var inventory = new InventoryService(30, items, 100);
             var progression = new PartyProgressionService(characters, CreateInitialParty(characters));
@@ -57,6 +65,7 @@ namespace BorderValley.Inventory
             context.Register<IReadOnlyDictionary<string, ItemDefinition>>(items);
             context.Register<IReadOnlyDictionary<string, CharacterDefinition>>(characters);
             context.Register<IReadOnlyDictionary<string, AffixDefinition>>(affixes);
+            context.Register(banditDropTable);
             participants.Add(inventory);
             participants.Add(progression);
         }
