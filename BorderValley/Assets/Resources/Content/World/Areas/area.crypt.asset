@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 13ee5249c6ad29943a02ff6912aaeaeb, type: 3}
+  m_Name: area.crypt
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.World.WorldAreaDefinition
+  id: area.crypt
+  bounds:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 24
+    height: 16
+  obstacles:
+  - serializedVersion: 2
+    x: 10
+    y: 6
+    width: 3
+    height: 3
+  npcs:
+  - {fileID: 11400000, guid: 8b6e12c130268ed49b58a4bf41d20f62, type: 2}
+  encounters:
+  - {fileID: 11400000, guid: a4b37c4077e2ee04f9d3edd9cb52000f, type: 2}
+  - {fileID: 11400000, guid: 43e0e2a7fcde54e4786a6649e1dc195c, type: 2}
+  - {fileID: 11400000, guid: b98f324255d451143837ab45c9eedf00, type: 2}
+  interactables:
+  - id: interaction.crypt.survivor
+    kind: 0
+    labelKey: interaction.crypt.survivor.label
+    position: {x: 6, y: 3}
+    radius: 1.2
+    targetId: npc.survivor
+    arrivalPosition: {x: 6, y: 3}
+    requiredEventId:
+  - id: interaction.crypt.gather
+    kind: 3
+    labelKey: interaction.crypt.gather.label
+    position: {x: 12, y: 3}
+    radius: 1.1
+    targetId: item.swift_boots
+    arrivalPosition: {x: 12, y: 3}
+    requiredEventId:
+  - id: interaction.crypt.chest
+    kind: 2
+    labelKey: interaction.crypt.chest.label
+    position: {x: 18, y: 13}
+    radius: 1.1
+    targetId: item.ember_charm
+    arrivalPosition: {x: 18, y: 13}
+    requiredEventId:
+  - id: interaction.crypt.investigate
+    kind: 4
+    labelKey: interaction.crypt.investigate.label
+    position: {x: 12, y: 12}
+    radius: 1.1
+    targetId: event.crypt.seal
+    arrivalPosition: {x: 12, y: 12}
+    requiredEventId:
+  - id: interaction.crypt.exit.watchtower
+    kind: 1
+    labelKey: interaction.crypt.exit.watchtower.label
+    position: {x: 2, y: 2}
+    radius: 1.3
+    targetId: area.watchtower
+    arrivalPosition: {x: 20, y: 2}
+    requiredEventId:
+  - id: interaction.crypt.encounter.guardians
+    kind: 5
+    labelKey: interaction.crypt.encounter.guardians.label
+    position: {x: 8, y: 3}
+    radius: 1.4
+    targetId: encounter.crypt.guardians
+    arrivalPosition: {x: 8, y: 3}
+    requiredEventId:
+  - id: interaction.crypt.encounter.necromancers
+    kind: 5
+    labelKey: interaction.crypt.encounter.necromancers.label
+    position: {x: 18, y: 3}
+    radius: 1.4
+    targetId: encounter.crypt.necromancers
+    arrivalPosition: {x: 18, y: 3}
+    requiredEventId:
+  - id: interaction.crypt.encounter.boss
+    kind: 5
+    labelKey: interaction.crypt.encounter.boss.label
+    position: {x: 18, y: 13}
+    radius: 1.4
+    targetId: encounter.crypt.boss
+    arrivalPosition: {x: 18, y: 13}
+    requiredEventId:
+  rewardTables:
+  - {fileID: 11400000, guid: 7231275644c2ff14f98f5ebd8862b430, type: 2}
+  eventIds:
+  - event.crypt.seal
+  - event.encounter.crypt.boss.defeated
+  rewardTableIds:
+  - loot.bandit.core

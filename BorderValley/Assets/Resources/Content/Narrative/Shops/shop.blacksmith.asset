@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a07e7ba225e9a3f4890ae70586a4a5dc, type: 3}
+  m_Name: shop.blacksmith
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Narrative.ShopDefinition
+  id: shop.blacksmith
+  localizationKey: shop.blacksmith.name
+  requiredEventId: event.shop.blacksmith_unlocked
+  offers:
+  - offerId: offer.blacksmith.frost_longsword
+    item: {fileID: 11400000, guid: ac3fe04113cb576479f91134d62eb70c, type: 2}
+    rarity: 0
+    itemLevel: 1
+    affixes: []

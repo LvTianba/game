@@ -13,6 +13,7 @@ using BorderValley.Data.World;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
 using BorderValley.UI.Battle;
+using BorderValley.UI.World;
 using BorderValley.World;
 using NUnit.Framework;
 using UnityEngine;
@@ -65,9 +66,9 @@ namespace BorderValley.PlayModeTests
             yield return WaitForScene("World");
             yield return null;
 
-            var entry = Object.FindAnyObjectByType<WorldBattleEntryView>();
+            var entry = Object.FindAnyObjectByType<WorldExplorationController>();
             Assert.That(entry, Is.Not.Null);
-            Assert.That(entry.ResultLabel.text, Is.EqualTo("battle.result.player_victory"));
+            Assert.That(entry.LastBattleResultKey, Is.EqualTo("battle.result.player_victory"));
             Assert.That(entry.HasPendingRewardForTests, Is.False);
             Assert.That(entry.SettlementCountForTests, Is.EqualTo(1));
             Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
@@ -104,7 +105,7 @@ namespace BorderValley.PlayModeTests
             KillAllEnemies(controller);
             var hud = Object.FindAnyObjectByType<BattleHudView>();
 
-            WorldBattleEntryView pendingEntry;
+            WorldExplorationController pendingEntry;
             int settledGold;
             int settledItems;
             int settledExperience;
@@ -114,10 +115,10 @@ namespace BorderValley.PlayModeTests
                 yield return WaitForScene("World");
                 yield return null;
 
-                pendingEntry = Object.FindAnyObjectByType<WorldBattleEntryView>();
+                pendingEntry = Object.FindAnyObjectByType<WorldExplorationController>();
                 Assert.That(pendingEntry, Is.Not.Null);
                 Assert.That(pendingEntry.HasPendingRewardForTests, Is.True);
-                Assert.That(pendingEntry.ResultLabel.text, Is.EqualTo(InventoryTextKeys.AutoSaveFailed));
+                Assert.That(pendingEntry.LastErrorKey, Is.EqualTo(InventoryTextKeys.AutoSaveFailed));
                 Assert.That(pendingEntry.SettlementCountForTests, Is.EqualTo(1));
                 Assert.That(pendingEntry.SaveAttemptCountForTests, Is.EqualTo(1));
                 Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));

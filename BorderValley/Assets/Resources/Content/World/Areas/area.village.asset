@@ -1,0 +1,120 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 13ee5249c6ad29943a02ff6912aaeaeb, type: 3}
+  m_Name: area.village
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.World.WorldAreaDefinition
+  id: area.village
+  bounds:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 24
+    height: 16
+  obstacles:
+  - serializedVersion: 2
+    x: 10
+    y: 5
+    width: 3
+    height: 3
+  - serializedVersion: 2
+    x: 15
+    y: 10
+    width: 4
+    height: 2
+  npcs:
+  - {fileID: 11400000, guid: 9fab197354f3db543891c22af0e531e5, type: 2}
+  - {fileID: 11400000, guid: af72abf90028c0d4b8495e76c1b0ee06, type: 2}
+  - {fileID: 11400000, guid: e55f8f535ba5d3d4a911285e2118a53c, type: 2}
+  - {fileID: 11400000, guid: 06b5b22097edebf46b9e7cfb06c024ce, type: 2}
+  encounters:
+  - {fileID: 11400000, guid: 3e14a29caf99a9740a032b9c942f0674, type: 2}
+  interactables:
+  - id: interaction.village.elder
+    kind: 0
+    labelKey: interaction.village.elder.label
+    position: {x: 6, y: 2}
+    radius: 1.2
+    targetId: npc.elder
+    arrivalPosition: {x: 6, y: 2}
+    requiredEventId:
+  - id: interaction.village.blacksmith
+    kind: 0
+    labelKey: interaction.village.blacksmith.label
+    position: {x: 6, y: 6}
+    radius: 1.2
+    targetId: npc.blacksmith
+    arrivalPosition: {x: 6, y: 6}
+    requiredEventId:
+  - id: interaction.village.merchant
+    kind: 0
+    labelKey: interaction.village.merchant.label
+    position: {x: 6, y: 10}
+    radius: 1.2
+    targetId: npc.merchant
+    arrivalPosition: {x: 6, y: 10}
+    requiredEventId:
+  - id: interaction.village.innkeeper
+    kind: 0
+    labelKey: interaction.village.innkeeper.label
+    position: {x: 11, y: 13}
+    radius: 1.2
+    targetId: npc.innkeeper
+    arrivalPosition: {x: 11, y: 13}
+    requiredEventId:
+  - id: interaction.village.gather
+    kind: 3
+    labelKey: interaction.village.gather.label
+    position: {x: 13, y: 3}
+    radius: 1.1
+    targetId: item.leather_armor
+    arrivalPosition: {x: 13, y: 3}
+    requiredEventId:
+  - id: interaction.village.chest
+    kind: 2
+    labelKey: interaction.village.chest.label
+    position: {x: 18, y: 13}
+    radius: 1.1
+    targetId: item.swift_boots
+    arrivalPosition: {x: 18, y: 13}
+    requiredEventId:
+  - id: interaction.village.investigate
+    kind: 4
+    labelKey: interaction.village.investigate.label
+    position: {x: 15, y: 3}
+    radius: 1.1
+    targetId: event.village.old_marker
+    arrivalPosition: {x: 15, y: 3}
+    requiredEventId:
+  - id: interaction.village.exit.forest
+    kind: 1
+    labelKey: interaction.village.exit.forest.label
+    position: {x: 22, y: 2}
+    radius: 1.3
+    targetId: area.forest
+    arrivalPosition: {x: 3, y: 2}
+    requiredEventId:
+  - id: interaction.village.encounter.road_patrol
+    kind: 5
+    labelKey: interaction.village.encounter.road_patrol.label
+    position: {x: 17, y: 8}
+    radius: 1.4
+    targetId: encounter.road.patrol
+    arrivalPosition: {x: 17, y: 8}
+    requiredEventId:
+  rewardTables:
+  - {fileID: 11400000, guid: 7231275644c2ff14f98f5ebd8862b430, type: 2}
+  eventIds:
+  - event.village.old_marker
+  - event.shop.general_unlocked
+  - event.shop.blacksmith_unlocked
+  rewardTableIds:
+  - loot.bandit.core

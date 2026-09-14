@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f6fb506544797a45afd1d96764b2928, type: 3}
+  m_Name: dialogue.ranger_companion
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Narrative.DialogueDefinition
+  id: dialogue.ranger_companion
+  startNodeId: dialogue.ranger_companion.start
+  nodes:
+  - nodeId: dialogue.ranger_companion.start
+    speakerNpcId: npc.ranger_companion
+    textKey: dialogue.ranger_companion.start.text
+    conditions: []
+    actions: []
+    choices:
+    - choiceId: dialogue.ranger_companion.choice.accept
+      labelKey: dialogue.ranger_companion.choice.accept.label
+      conditions:
+      - kind: 0
+        targetId: quest.side.ranger
+        value: 0
+      actions:
+      - kind: 0
+        targetId: quest.side.ranger
+        objectiveId:
+        amount: 1
+      nextNodeId: dialogue.ranger_companion.accepted
+    - choiceId: dialogue.ranger_companion.choice.leave
+      labelKey: dialogue.ranger_companion.choice.leave.label
+      conditions: []
+      actions: []
+      nextNodeId: dialogue.ranger_companion.leave
+    nextNodeId:
+  - nodeId: dialogue.ranger_companion.accepted
+    speakerNpcId: npc.ranger_companion
+    textKey: dialogue.ranger_companion.accepted.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:
+  - nodeId: dialogue.ranger_companion.leave
+    speakerNpcId: npc.ranger_companion
+    textKey: dialogue.ranger_companion.leave.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:

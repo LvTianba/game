@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f6fb506544797a45afd1d96764b2928, type: 3}
+  m_Name: dialogue.elder
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Narrative.DialogueDefinition
+  id: dialogue.elder
+  startNodeId: dialogue.elder.start
+  nodes:
+  - nodeId: dialogue.elder.start
+    speakerNpcId: npc.elder
+    textKey: dialogue.elder.start.text
+    conditions: []
+    actions: []
+    choices:
+    - choiceId: dialogue.elder.choice.accept
+      labelKey: dialogue.elder.choice.accept.label
+      conditions:
+      - kind: 0
+        targetId: quest.main.crypt
+        value: 0
+      actions:
+      - kind: 0
+        targetId: quest.main.crypt
+        objectiveId:
+        amount: 1
+      nextNodeId: dialogue.elder.accepted
+    - choiceId: dialogue.elder.choice.turn_in
+      labelKey: dialogue.elder.choice.turn_in.label
+      conditions:
+      - kind: 0
+        targetId: quest.main.crypt
+        value: 2
+      actions:
+      - kind: 2
+        targetId: quest.main.crypt
+        objectiveId:
+        amount: 1
+      nextNodeId: dialogue.elder.completed
+    - choiceId: dialogue.elder.choice.leave
+      labelKey: dialogue.elder.choice.leave.label
+      conditions: []
+      actions: []
+      nextNodeId: dialogue.elder.leave
+    nextNodeId:
+  - nodeId: dialogue.elder.accepted
+    speakerNpcId: npc.elder
+    textKey: dialogue.elder.accepted.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:
+  - nodeId: dialogue.elder.completed
+    speakerNpcId: npc.elder
+    textKey: dialogue.elder.completed.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:
+  - nodeId: dialogue.elder.leave
+    speakerNpcId: npc.elder
+    textKey: dialogue.elder.leave.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:
