@@ -9,6 +9,7 @@ namespace BorderValley.UI.Inventory
         public const string UnknownDefinition = BorderValley.Inventory.InventoryTextKeys.UnknownDefinition;
         public const string ItemMissing = BorderValley.Inventory.InventoryTextKeys.ItemMissing;
         public const string ClassRestricted = BorderValley.Inventory.InventoryTextKeys.ClassRestricted;
+        public const string AlreadyEquipped = BorderValley.Inventory.InventoryTextKeys.AlreadyEquipped;
         public const string SlotEmpty = BorderValley.Inventory.InventoryTextKeys.SlotEmpty;
         public const string NotEnoughGold = BorderValley.Inventory.InventoryTextKeys.NotEnoughGold;
         public const string NotEnoughMaterials = BorderValley.Inventory.InventoryTextKeys.NotEnoughMaterials;
@@ -16,6 +17,8 @@ namespace BorderValley.UI.Inventory
         public const string EquippedCannotReforge = BorderValley.Inventory.InventoryTextKeys.EquippedCannotReforge;
         public const string CraftingFailed = BorderValley.Inventory.InventoryTextKeys.CraftingFailed;
         public const string ReforgeFailed = BorderValley.Inventory.InventoryTextKeys.ReforgeFailed;
+        public const string ReforgeNoOp = BorderValley.Inventory.InventoryTextKeys.ReforgeNoOp;
+        public const string AutoSaveFailed = BorderValley.Inventory.InventoryTextKeys.AutoSaveFailed;
         public const string ServiceUnavailable = "inventory.ui.error.service_unavailable";
         public const string InventoryTitle = "inventory.ui.title";
         public const string CraftTitle = "inventory.craft.title";
@@ -53,6 +56,12 @@ namespace BorderValley.UI.Inventory
         public const string OpenCraft = "world.ui.craft";
         public const string Rest = "world.ui.rest";
         public const string Battle = "battle.ui.enter_battle";
+        public const string Retry = "world.ui.retry";
+        public const string ActiveMember = "inventory.ui.active_member";
+        public const string NextMember = "inventory.ui.next_member";
+        public const string Locked = "inventory.ui.locked";
+        public const string CycleLock = "inventory.ui.cycle_lock";
+        public const string RetrySave = "inventory.ui.retry_save";
 
         public static string SlotKey(ItemSlot slot) =>
             "inventory.slot." + slot.ToString().ToLowerInvariant();

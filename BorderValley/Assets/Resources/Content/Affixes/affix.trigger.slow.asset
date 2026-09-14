@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Items.AffixDefinition
   id: affix.trigger.slow
   localizationKey: affix.trigger.slow.name
-  compatibleSlots: 00000000040000000200000003000000i
+  compatibleSlots: 000000000400000002000000030000000100000005000000i
   minimumRarity: 1
   effectKind: 3
   stat: 2
@@ -23,7 +23,7 @@ MonoBehaviour:
   passiveEffect: 0
   minValue: 1
   maxValue: 1
-  minItemLevel: 2
+  minItemLevel: 1
   duration: 2
   weight: 5
   budgetCost: 4

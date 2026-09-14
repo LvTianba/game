@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Items.AffixDefinition
   id: affix.flat_health
   localizationKey: affix.flat_health.name
-  compatibleSlots: 020000000300000004000000i
+  compatibleSlots: 0200000003000000040000000100000005000000i
   minimumRarity: 0
   effectKind: 0
   stat: 0

@@ -52,6 +52,10 @@ namespace BorderValley.Inventory
             var progression = new PartyProgressionService(characters, CreateInitialParty(characters));
             var snapshotBuilder = new PartyBattleSnapshotBuilder(progression, inventory, items, affixes);
             var lootGenerator = new LootGenerator(items, affixes);
+            var matrixErrors = lootGenerator.ValidateContentMatrix(banditDropTable);
+            if (matrixErrors.Count > 0)
+                throw new InvalidOperationException(
+                    "Equipment content matrix is invalid: " + string.Join(" | ", matrixErrors));
             var craftingCosts = new CraftingCosts();
             var economy = new EconomyService(inventory, items, affixes);
             var crafting = new CraftingService(inventory, items, affixes, lootGenerator, craftingCosts);

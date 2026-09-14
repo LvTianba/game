@@ -7,6 +7,7 @@ namespace BorderValley.Inventory
         public const string UnknownDefinition = "inventory.ui.error.unknown_definition";
         public const string ItemMissing = "inventory.ui.error.item_missing";
         public const string ClassRestricted = "inventory.ui.error.class_restricted";
+        public const string AlreadyEquipped = "inventory.ui.error.already_equipped";
         public const string SlotEmpty = "inventory.ui.error.slot_empty";
         public const string NotEnoughGold = "inventory.ui.error.not_enough_gold";
         public const string NotEnoughMaterials = "inventory.ui.error.not_enough_materials";
@@ -19,5 +20,7 @@ namespace BorderValley.Inventory
         public const string LockedAffixNotFound = "inventory.ui.error.locked_affix_not_found";
         public const string CraftingFailed = "inventory.ui.error.crafting_failed";
         public const string ReforgeFailed = "inventory.ui.error.reforge_failed";
+        public const string ReforgeNoOp = "inventory.ui.error.reforge_no_op";
+        public const string AutoSaveFailed = "save.error.autosave_failed";
     }
 }

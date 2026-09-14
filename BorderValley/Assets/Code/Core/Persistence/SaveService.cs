@@ -138,18 +138,51 @@ namespace BorderValley.Core.Persistence
                 var data = ReadValidSaveData(path);
                 if (data == null) return false;
 
+                var snapshots = participants.Values.ToDictionary(
+                    participant => participant.Key,
+                    participant => participant.Capture(),
+                    StringComparer.Ordinal);
+
+                try
+                {
+                    foreach (var participant in participants.Values)
+                    {
+                        participant.Reset();
+                        if (data.Participants.TryGetValue(participant.Key, out var state))
+                            participant.Restore(state);
+                        participant.RestoreContext(data.SceneName);
+                    }
+
+                    return true;
+                }
+                catch (Exception)
+                {
+                    Rollback(snapshots);
+                    return false;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private void Rollback(IReadOnlyDictionary<string, JObject> snapshots)
+        {
+            try
+            {
                 foreach (var participant in participants.Values)
                 {
                     participant.Reset();
-                    if (data.Participants.TryGetValue(participant.Key, out var state))
+                    if (snapshots.TryGetValue(participant.Key, out var state))
                         participant.Restore(state);
-                    participant.RestoreContext(data.SceneName);
+                    participant.RestoreContext(string.Empty);
                 }
-                return true;
             }
-            catch (IOException) { return false; }
-            catch (UnauthorizedAccessException) { return false; }
-            catch (JsonException) { return false; }
+            catch (Exception)
+            {
+                // The next load path will attempt a full reset/restore again.
+            }
         }
 
         private SaveFileState InspectSaveFile(string path, out Exception readException)

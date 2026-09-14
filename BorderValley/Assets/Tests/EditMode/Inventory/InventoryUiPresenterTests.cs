@@ -155,6 +155,29 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void Craft_WhenAutosaveFails_ExposesDirtyStateAndCanRetry()
+        {
+            var attempts = 0;
+            var presenter = PresenterWithSave(_ => attempts++ > 0);
+
+            Assert.That(
+                presenter.Craft(
+                    "crafted.retry",
+                    "item.sword",
+                    "class.warrior",
+                    1,
+                    RandomSourceFactory.FromSeed("craft.retry")),
+                Is.False);
+            Assert.That(presenter.HasUnsavedChanges, Is.True);
+            Assert.That(presenter.LastErrorKey, Is.EqualTo(InventoryTextKeys.AutoSaveFailed));
+
+            Assert.That(presenter.RetrySave(), Is.True);
+            Assert.That(presenter.HasUnsavedChanges, Is.False);
+            Assert.That(presenter.LastErrorKey, Is.Empty);
+            Assert.That(attempts, Is.EqualTo(2));
+        }
+
+        [Test]
         public void RestParty_RecoversHealthAndManaButCapsAtMaximum()
         {
             var presenter = Presenter();
@@ -168,6 +191,9 @@ namespace BorderValley.Inventory.Tests
 
         private InventoryUiPresenter Presenter(Action<string> save = null) =>
             new(service, crafting, progression, affixes, save);
+
+        private InventoryUiPresenter PresenterWithSave(Func<string, bool> save) =>
+            new(service, crafting, progression, null, null, affixes, save);
 
         private static ItemInstance Item(
             string instanceId,

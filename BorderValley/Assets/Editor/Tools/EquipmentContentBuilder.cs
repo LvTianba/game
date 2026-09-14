@@ -77,14 +77,22 @@ namespace BorderValley.Editor
                 130,
                 Stat(CombatStat.Power, 3),
                 Stat(CombatStat.MaxMana, 3));
+            var woodenBuckler = Item(
+                "item.wooden_buckler",
+                "item.wooden_buckler.name",
+                ItemSlot.Offhand,
+                Array.Empty<string>(),
+                85,
+                Stat(CombatStat.Armor, 3),
+                Stat(CombatStat.MaxHealth, 1));
 
-            generated.AddRange(new[] { frostLongsword, hunterBow, oakStaff, ironHelmet, leatherArmor, swiftBoots, emberCharm });
+            generated.AddRange(new[] { frostLongsword, hunterBow, oakStaff, ironHelmet, leatherArmor, swiftBoots, emberCharm, woodenBuckler });
 
             var flatHealth = Affix(
                 "affix.flat_health",
                 AffixEffectKind.FlatStat,
                 ItemRarity.Common,
-                new[] { ItemSlot.Head, ItemSlot.Body, ItemSlot.Accessory },
+                new[] { ItemSlot.Head, ItemSlot.Body, ItemSlot.Accessory, ItemSlot.Offhand, ItemSlot.Boots },
                 CombatStat.MaxHealth,
                 default,
                 default,
@@ -112,7 +120,7 @@ namespace BorderValley.Editor
                 "affix.flat_armor",
                 AffixEffectKind.FlatStat,
                 ItemRarity.Common,
-                new[] { ItemSlot.Head, ItemSlot.Body, ItemSlot.Boots },
+                new[] { ItemSlot.Head, ItemSlot.Body, ItemSlot.Boots, ItemSlot.Offhand },
                 CombatStat.Armor,
                 default,
                 default,
@@ -170,13 +178,13 @@ namespace BorderValley.Editor
                 "affix.trigger.slow",
                 AffixEffectKind.Trigger,
                 ItemRarity.Fine,
-                new[] { ItemSlot.Weapon, ItemSlot.Accessory, ItemSlot.Head, ItemSlot.Body },
+                new[] { ItemSlot.Weapon, ItemSlot.Accessory, ItemSlot.Head, ItemSlot.Body, ItemSlot.Offhand, ItemSlot.Boots },
                 CombatStat.Power,
                 default,
                 PassiveEffectKind.OnAttackApplySlow,
                 1,
                 1,
-                2,
+                1,
                 2,
                 5,
                 4);
@@ -235,7 +243,8 @@ namespace BorderValley.Editor
                     new LootEntry(ironHelmet, 1),
                     new LootEntry(leatherArmor, 1),
                     new LootEntry(swiftBoots, 1),
-                    new LootEntry(emberCharm, 1)
+                    new LootEntry(emberCharm, 1),
+                    new LootEntry(woodenBuckler, 1)
                 },
                 new[]
                 {

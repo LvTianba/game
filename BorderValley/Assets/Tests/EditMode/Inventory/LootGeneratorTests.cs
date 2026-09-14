@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BorderValley.Core.Combat;
+using BorderValley.Data;
 using BorderValley.Core.Random;
 using BorderValley.Data.Items;
 using NUnit.Framework;
@@ -108,6 +109,60 @@ namespace BorderValley.Inventory.Tests
             }
         }
 
+        [Test]
+        public void GenerateForItem_ShippedContentMatrix_ProducesEveryRarityExactly()
+        {
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            var itemDefinitions = catalog.All.OfType<ItemDefinition>()
+                .ToDictionary(value => value.Id, StringComparer.Ordinal);
+            var affixDefinitions = catalog.All.OfType<AffixDefinition>()
+                .ToDictionary(value => value.Id, StringComparer.Ordinal);
+            var dropTable = catalog.All.OfType<ItemDropTableDefinition>()
+                .Single(value => value.Id == "loot.bandit.core");
+            var generator = new LootGenerator(itemDefinitions, affixDefinitions);
+
+            Assert.That(
+                itemDefinitions.Values.Select(value => value.Slot).Distinct(),
+                Is.EquivalentTo(Enum.GetValues(typeof(ItemSlot)).Cast<ItemSlot>()));
+            Assert.That(
+                dropTable.Entries.Select(entry => entry.Item.Id),
+                Is.SupersetOf(itemDefinitions.Keys));
+
+            foreach (var itemDefinition in itemDefinitions.Values)
+            foreach (var level in Enumerable.Range(1, PartyProgressionService.MaxLevel))
+            foreach (var rarity in Enum.GetValues(typeof(ItemRarity)).Cast<ItemRarity>())
+            {
+                ItemInstance generated;
+                try
+                {
+                    generated = generator.GenerateForItem(
+                        $"matrix.{itemDefinition.Id}.{level}.{rarity}",
+                        itemDefinition,
+                        level,
+                        rarity,
+                        RandomSourceFactory.FromSeed($"matrix.{itemDefinition.Id}.{level}.{rarity}"));
+                }
+                catch (InvalidOperationException exception)
+                {
+                    Assert.Fail($"{itemDefinition.Id} level {level} {rarity}: {exception.Message}");
+                    return;
+                }
+
+                Assert.That(
+                    generated.Affixes,
+                    Has.Count.EqualTo(ItemRules.AffixCount(rarity)),
+                    $"{itemDefinition.Id} level {level} {rarity}");
+                if (rarity == ItemRarity.Epic)
+                {
+                    Assert.That(
+                        generated.Affixes.Any(value =>
+                            ItemRules.IsSpecial(affixDefinitions[value.AffixId])),
+                        Is.True,
+                        $"{itemDefinition.Id} level {level} Epic must include a special affix");
+                }
+            }
+        }
         [TestCase(ItemRarity.Rare)]
         [TestCase(ItemRarity.Epic)]
         public void GenerateForItem_WhenExactAffixCountCannotBeMet_Throws(ItemRarity rarity)

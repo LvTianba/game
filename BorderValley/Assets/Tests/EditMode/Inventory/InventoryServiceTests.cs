@@ -27,6 +27,22 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void TryEquip_ByMember_KeepsIndependentLoadoutsAndRejectsCrossMemberReuse()
+        {
+            var service = new InventoryService(4, Definitions(), 100);
+            Assert.That(service.TryAdd(Item("i1", "item.sword", ItemRarity.Common), out _), Is.True);
+            Assert.That(service.TryAdd(Item("i2", "item.axe", ItemRarity.Common), out _), Is.True);
+
+            Assert.That(service.TryEquip("i1", "player.warrior", "class.warrior", out _), Is.True);
+            Assert.That(service.TryEquip("i2", "player.ranger", "class.warrior", out _), Is.True);
+
+            Assert.That(service.GetEquipped("player.warrior")[ItemSlot.Weapon], Is.EqualTo("i1"));
+            Assert.That(service.GetEquipped("player.ranger")[ItemSlot.Weapon], Is.EqualTo("i2"));
+            Assert.That(service.TryEquip("i1", "player.mage", "class.warrior", out var error), Is.False);
+            Assert.That(error, Is.EqualTo(InventoryTextKeys.AlreadyEquipped));
+        }
+
+        [Test]
         public void SaveParticipant_RestoresItemsEquipmentGoldAndMaterials()
         {
             var root = System.IO.Path.Combine(

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.Items.AffixDefinition
   id: affix.flat_armor
   localizationKey: affix.flat_armor.name
-  compatibleSlots: 020000000300000005000000i
+  compatibleSlots: 02000000030000000500000001000000i
   minimumRarity: 0
   effectKind: 0
   stat: 3

@@ -24,7 +24,7 @@ namespace BorderValley.Inventory
             this.affixes = affixes ?? throw new ArgumentNullException(nameof(affixes));
         }
 
-        public AggregateResult Aggregate(CharacterDefinition character, int level)
+        public AggregateResult Aggregate(CharacterDefinition character, int level, string memberId = null)
         {
             if (character == null) throw new ArgumentNullException(nameof(character));
             level = Math.Clamp(level, 1, PartyProgressionService.MaxLevel);
@@ -38,7 +38,7 @@ namespace BorderValley.Inventory
             foreach (var stat in AllStats())
                 raw[stat] = character.GetBaseStat(stat, level);
 
-            foreach (var pair in inventory.Equipped
+            foreach (var pair in inventory.GetEquipped(memberId)
                          .OrderBy(pair => pair.Key)
                          .ThenBy(pair => pair.Value, StringComparer.Ordinal))
             {
@@ -94,8 +94,9 @@ namespace BorderValley.Inventory
             CharacterDefinition character,
             int level,
             IReadOnlyDictionary<string, ItemDefinition> items,
-            IReadOnlyDictionary<string, AffixDefinition> affixes) =>
-            new EquipmentStatAggregator(inventory, items, affixes).Aggregate(character, level);
+            IReadOnlyDictionary<string, AffixDefinition> affixes,
+            string memberId = null) =>
+            new EquipmentStatAggregator(inventory, items, affixes).Aggregate(character, level, memberId);
 
         private static Dictionary<CombatStat, int> Stats() =>
             AllStats().ToDictionary(stat => stat, _ => 0);

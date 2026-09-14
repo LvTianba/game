@@ -27,6 +27,7 @@ namespace BorderValley.UI.Battle
         public int RenderedCellCount => gridView == null ? 0 : gridView.CellCount;
         public int RenderedUnitCount => gridView == null ? 0 : gridView.UnitCount;
         public Button EndTurnButton => hudView == null ? null : hudView.EndTurnButton;
+        public BattleEngine EngineForTests => presenter?.Engine;
         public int EnemyTurnLoopCount { get; private set; }
         public int EnemyActionCount { get; private set; }
         public bool IsEnemyTurnLoopActive => enemyTurnLoopActive;

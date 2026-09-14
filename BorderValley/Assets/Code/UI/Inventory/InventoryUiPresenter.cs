@@ -1,5 +1,4 @@
 using System;
-using System;
 using System.Collections.Generic;
 using BorderValley.Core.Random;
 using BorderValley.Data.Items;
@@ -13,9 +12,10 @@ namespace BorderValley.UI.Inventory
         private readonly InventorySystem.CraftingService crafting;
         private readonly InventorySystem.PartyProgressionService progression;
         private readonly IReadOnlyDictionary<string, AffixDefinition> affixDefinitions;
-        private readonly Action<string> save;
+        private readonly Func<string, bool> save;
         private InventorySystem.InventoryFilter filter = new();
         private InventorySystem.InventorySort sort = InventorySystem.InventorySort.SlotThenRarity;
+        private bool hasUnsavedChanges;
 
         public InventoryUiPresenter(
             InventorySystem.InventoryService inventory,
@@ -23,7 +23,14 @@ namespace BorderValley.UI.Inventory
             InventorySystem.PartyProgressionService progression,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions = null,
             Action<string> save = null)
-            : this(inventory, crafting, progression, null, null, affixDefinitions, save)
+            : this(
+                inventory,
+                crafting,
+                progression,
+                null,
+                null,
+                affixDefinitions,
+                save == null ? null : _ => { save(_); return true; })
         {
         }
 
@@ -33,7 +40,7 @@ namespace BorderValley.UI.Inventory
             InventorySystem.CraftingService crafting,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions = null,
             Action<string> save = null)
-            : this(inventory, crafting, progression, null, null, affixDefinitions, save)
+            : this(inventory, crafting, progression, affixDefinitions, save)
         {
         }
 
@@ -44,7 +51,7 @@ namespace BorderValley.UI.Inventory
             InventorySystem.EconomyService economy,
             InventorySystem.CraftingCosts costs,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions = null,
-            Action<string> save = null)
+            Func<string, bool> save = null)
         {
             this.inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             this.crafting = crafting;
@@ -62,6 +69,9 @@ namespace BorderValley.UI.Inventory
         public event Action Changed;
 
         public string SelectedInstanceId { get; private set; }
+        public string SelectedMemberId { get; private set; } = string.Empty;
+        public string LockedAffixId { get; private set; }
+        public bool HasUnsavedChanges => hasUnsavedChanges;
         public InventorySystem.InventoryFilter Filter => filter;
         public InventorySystem.InventorySort Sort => sort;
         public string LastErrorKey { get; private set; } = string.Empty;
@@ -93,22 +103,40 @@ namespace BorderValley.UI.Inventory
         public void Select(string instanceId)
         {
             SelectedInstanceId = instanceId;
+            LockedAffixId = null;
             Notify();
         }
 
         public void SetSelectedForTests(string instanceId) => Select(instanceId);
 
-        public bool EquipSelected(string classId)
+        public void SetActiveMember(string memberId)
+        {
+            SelectedMemberId = memberId ?? string.Empty;
+            Notify();
+        }
+
+        public void SetLockedAffix(string affixId)
+        {
+            LockedAffixId = string.IsNullOrWhiteSpace(affixId) ? null : affixId;
+            Notify();
+        }
+
+        public bool EquipSelected(string classId) =>
+            EquipSelected(SelectedMemberId, classId);
+
+        public bool EquipSelected(string memberId, string classId)
         {
             if (string.IsNullOrWhiteSpace(SelectedInstanceId))
                 return Fail(BorderValley.UI.Inventory.InventoryTextKeys.ItemMissing);
             return SetResult(
-                inventory.TryEquip(SelectedInstanceId, classId, out var error),
+                inventory.TryEquip(SelectedInstanceId, memberId, classId, out var error),
                 error);
         }
 
-        public bool Unequip(ItemSlot slot) =>
-            SetResult(inventory.TryUnequip(slot, out var error), error);
+        public bool Unequip(ItemSlot slot) => Unequip(SelectedMemberId, slot);
+
+        public bool Unequip(string memberId, ItemSlot slot) =>
+            SetResult(inventory.TryUnequip(memberId, slot, out var error), error);
 
         public bool DismantleSelected()
         {
@@ -120,17 +148,24 @@ namespace BorderValley.UI.Inventory
                 return Fail(result.Error);
 
             SelectedInstanceId = null;
+            LockedAffixId = null;
             return Succeed(saveCraft: true);
         }
 
         public bool ReforgeSelected(string lockedAffixId, IRandomSource random)
+        {
+            SetLockedAffix(lockedAffixId);
+            return ReforgeSelected(random);
+        }
+
+        public bool ReforgeSelected(IRandomSource random)
         {
             if (crafting == null || string.IsNullOrWhiteSpace(SelectedInstanceId))
                 return Fail(BorderValley.UI.Inventory.InventoryTextKeys.ItemMissing);
             if (random == null)
                 throw new ArgumentNullException(nameof(random));
 
-            var result = crafting.Reforge(SelectedInstanceId, lockedAffixId, random);
+            var result = crafting.Reforge(SelectedInstanceId, LockedAffixId, random);
             return result.Success
                 ? Succeed(saveCraft: true)
                 : Fail(result.Error);
@@ -171,6 +206,29 @@ namespace BorderValley.UI.Inventory
             Succeed();
         }
 
+        public bool RetrySave()
+        {
+            if (!hasUnsavedChanges) return true;
+            if (save == null)
+            {
+                LastErrorKey = BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed;
+                Notify();
+                return false;
+            }
+
+            if (!TryInvokeSave())
+            {
+                LastErrorKey = BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed;
+                Notify();
+                return false;
+            }
+
+            hasUnsavedChanges = false;
+            LastErrorKey = string.Empty;
+            Notify();
+            return true;
+        }
+
         public void Dispose()
         {
             inventory.Changed -= Notify;
@@ -188,10 +246,33 @@ namespace BorderValley.UI.Inventory
         private bool Succeed(bool saveCraft = false)
         {
             LastErrorKey = string.Empty;
-            if (saveCraft)
-                save?.Invoke("inventory");
+            if (saveCraft && save != null)
+            {
+                if (!TryInvokeSave())
+                {
+                    hasUnsavedChanges = true;
+                    LastErrorKey = BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed;
+                    Notify();
+                    return false;
+                }
+
+                hasUnsavedChanges = false;
+            }
+
             Notify();
             return true;
+        }
+
+        private bool TryInvokeSave()
+        {
+            try
+            {
+                return save != null && save("inventory");
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private bool Fail(string error)

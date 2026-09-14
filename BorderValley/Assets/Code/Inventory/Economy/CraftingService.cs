@@ -18,6 +18,7 @@ namespace BorderValley.Inventory
         private readonly IReadOnlyDictionary<string, AffixDefinition> affixes;
         private readonly LootGenerator generator;
         private readonly CraftingCosts costs;
+        private readonly Dictionary<string, int> reforgeActionCounters = new(StringComparer.Ordinal);
 
         public CraftingService(
             InventoryService inventory,
@@ -120,10 +121,11 @@ namespace BorderValley.Inventory
             if (!items.TryGetValue(item.ItemDefinitionId, out var definition))
                 return CraftingResult.Failure(InventoryTextKeys.UnknownDefinition);
 
-            var locksAffix = !string.IsNullOrWhiteSpace(lockedAffixId);
-            if (locksAffix && ItemRules.AffixCount(item.Rarity) == 0)
+            var count = ItemRules.AffixCount(item.Rarity);
+            if (count == 0)
                 return CraftingResult.Failure(InventoryTextKeys.ReforgeFailed);
 
+            var locksAffix = !string.IsNullOrWhiteSpace(lockedAffixId);
             AffixInstance locked = null;
             if (locksAffix)
             {
@@ -134,6 +136,30 @@ namespace BorderValley.Inventory
                     return CraftingResult.Failure(InventoryTextKeys.ReforgeFailed);
             }
 
+            if (locked != null && count == 1)
+                return CraftingResult.Failure(InventoryTextKeys.ReforgeNoOp);
+
+            IReadOnlyList<AffixInstance> values;
+            try
+            {
+                values = GenerateReforgedAffixes(item, definition, locked, random);
+            }
+            catch (InvalidOperationException)
+            {
+                return CraftingResult.Failure(InventoryTextKeys.ReforgeFailed);
+            }
+
+            if (!ItemRules.TryValidateAffixes(
+                    values,
+                    definition.Slot,
+                    item.Rarity,
+                    item.ItemLevel,
+                    affixes,
+                    out _))
+                return CraftingResult.Failure(InventoryTextKeys.ReforgeFailed);
+            if (AffixSetsEqual(item.Affixes, values))
+                return CraftingResult.Failure(InventoryTextKeys.ReforgeNoOp);
+
             var goldCost = costs.ReforgeGold(item, locksAffix);
             var materialCost = costs.ReforgeMaterial(item, locksAffix);
             if (!CanSpend(goldCost, materialCost, out var spendError))
@@ -143,16 +169,6 @@ namespace BorderValley.Inventory
 
             try
             {
-                var values = GenerateReforgedAffixes(item, definition, locked, random);
-                if (!ItemRules.TryValidateAffixes(
-                        values,
-                        definition.Slot,
-                        item.Rarity,
-                        item.ItemLevel,
-                        affixes,
-                        out _))
-                    return RollbackFailure(goldCost, materialCost, InventoryTextKeys.ReforgeFailed);
-
                 item.ReplaceAffixes(values);
                 inventory.AddGold(0);
                 return CraftingResult.Succeeded(item, goldCost, materialCost);
@@ -170,13 +186,11 @@ namespace BorderValley.Inventory
             IRandomSource random)
         {
             var count = ItemRules.AffixCount(item.Rarity);
-            if (count == 0)
-                return Array.Empty<AffixInstance>();
-            if (locked != null && count == 1)
-                return new[] { locked };
-
+            reforgeActionCounters.TryGetValue(item.InstanceId, out var actionIndex);
+            reforgeActionCounters[item.InstanceId] = actionIndex + 1;
             var local = random.Fork(
-                "reforge:" + item.InstanceId + ":" + (locked?.AffixId ?? string.Empty));
+                "reforge:" + item.InstanceId + ":" + (locked?.AffixId ?? string.Empty) + ":" + actionIndex);
+
             for (var attempt = 0; attempt < MaxReforgeAttempts; attempt++)
             {
                 try
@@ -188,7 +202,9 @@ namespace BorderValley.Inventory
                         item.Rarity,
                         local.Fork("attempt:" + attempt));
                     var values = Combine(locked, generated.Affixes, count);
-                    if (values != null && ItemRules.TryValidateAffixes(
+                    if (values != null &&
+                        !AffixSetsEqual(item.Affixes, values) &&
+                        ItemRules.TryValidateAffixes(
                             values,
                             definition.Slot,
                             item.Rarity,
@@ -203,7 +219,19 @@ namespace BorderValley.Inventory
                 }
             }
 
-            throw new InvalidOperationException("Unable to generate a valid reforge result.");
+            throw new InvalidOperationException("Unable to generate a different valid reforge result.");
+        }
+
+        private static bool AffixSetsEqual(
+            IReadOnlyList<AffixInstance> left,
+            IReadOnlyList<AffixInstance> right)
+        {
+            if (left.Count != right.Count) return false;
+            return left.OrderBy(value => value.AffixId, StringComparer.Ordinal)
+                .Select(value => (value.AffixId, value.Value))
+                .SequenceEqual(
+                    right.OrderBy(value => value.AffixId, StringComparer.Ordinal)
+                        .Select(value => (value.AffixId, value.Value)));
         }
 
         private IReadOnlyList<AffixInstance> Combine(

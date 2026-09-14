@@ -531,6 +531,60 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void Reforge_WithSingleLockedAffix_RejectsNoOpWithoutSpending()
+        {
+            var inventory = InventoryWithItem(
+                "i1",
+                "item.sword",
+                ItemRarity.Fine,
+                3,
+                1000,
+                new AffixInstance("affix.power", 4));
+            inventory.AddMaterial("material.ore", 10);
+            var crafting = CreateCrafting(inventory);
+
+            var result = crafting.Reforge(
+                "i1",
+                "affix.power",
+                RandomSourceFactory.FromSeed("single-lock"));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Error, Is.EqualTo(InventoryTextKeys.ReforgeNoOp));
+            Assert.That(inventory.Gold, Is.EqualTo(1000));
+            Assert.That(inventory.Materials["material.ore"], Is.EqualTo(10));
+        }
+
+        [Test]
+        public void Reforge_RepeatedActions_AdvanceSeedAndVaryResult()
+        {
+            var inventory = InventoryWithItem(
+                "i1",
+                "item.sword",
+                ItemRarity.Rare,
+                3,
+                1000,
+                new AffixInstance("affix.power", 4),
+                new AffixInstance("affix.armor", 3));
+            inventory.AddMaterial("material.ore", 20);
+            var crafting = CreateCrafting(inventory);
+
+            Assert.That(
+                crafting.Reforge("i1", "affix.power", RandomSourceFactory.FromSeed("repeat")).Success,
+                Is.True);
+            var first = inventory.GetItem("i1").Affixes
+                .Select(value => (value.AffixId, value.Value)).ToArray();
+            var secondResult = crafting.Reforge(
+                "i1",
+                "affix.power",
+                RandomSourceFactory.FromSeed("repeat"));
+            Assert.That(secondResult.Success, Is.True, secondResult.Error);
+            var second = inventory.GetItem("i1").Affixes
+                .Select(value => (value.AffixId, value.Value)).ToArray();
+
+            CollectionAssert.AreNotEqual(first, second);
+        }
+
+        [Test]
         public void Reforge_WithSameSeedAndInputs_IsDeterministic()
         {
             var first = InventoryWithItem("i1", "item.sword", ItemRarity.Rare, 3, 1000,

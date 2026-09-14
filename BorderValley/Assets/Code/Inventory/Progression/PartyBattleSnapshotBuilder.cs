@@ -52,7 +52,7 @@ namespace BorderValley.Inventory
         {
             var character = progression.GetCharacter(member.CharacterId);
             if (character == null) return null;
-            var equipment = aggregator.Aggregate(character, member.Level);
+            var equipment = aggregator.Aggregate(character, member.Level, member.MemberId);
             var skillIds = progression.GetUnlockedSkillIds(member);
             var modifiers = equipment.SkillModifiers.ToDictionary(
                 modifier => (modifier.SkillId, modifier.Kind),

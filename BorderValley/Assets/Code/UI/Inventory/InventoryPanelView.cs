@@ -38,12 +38,21 @@ namespace BorderValley.UI.Inventory
         private InventorySystem.EconomyService economy;
         private InventorySystem.CraftingCosts costs;
         private IReadOnlyDictionary<string, AffixDefinition> affixDefinitions;
-        private Action<string> save;
+        private Func<string, bool> save;
+        private Text memberLabel;
+        private Text lockLabel;
         private int page;
         private int filterIndex;
+        private int memberIndex;
+        private int lockIndex;
 
         public bool IsOpen => panelRoot != null && panelRoot.activeSelf;
         public InventoryPanelMode Mode { get; private set; }
+        public string LastErrorKeyForTests => presenter?.LastErrorKey ?? string.Empty;
+        public string CostTextForTests => costLabel == null ? string.Empty : costLabel.text;
+        public bool HasUnsavedChangesForTests => presenter?.HasUnsavedChanges ?? false;
+        public RectTransform PanelRootRect => panelRoot == null ? null : panelRoot.GetComponent<RectTransform>();
+        public RectTransform RectTransform => GetComponent<RectTransform>();
 
         public void Initialize(
             InventorySystem.InventoryService inventory,
@@ -52,7 +61,7 @@ namespace BorderValley.UI.Inventory
             InventorySystem.CraftingCosts costs,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions,
             InventorySystem.EconomyService economy = null,
-            Action<string> save = null)
+            Func<string, bool> save = null)
         {
             this.inventory = inventory;
             this.progression = progression;
@@ -62,6 +71,8 @@ namespace BorderValley.UI.Inventory
                 new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
             this.economy = economy;
             this.save = save;
+            memberIndex = 0;
+            lockIndex = 0;
             presenter?.Dispose();
             presenter = inventory == null
                 ? null
@@ -74,10 +85,25 @@ namespace BorderValley.UI.Inventory
                     this.affixDefinitions,
                     save);
             if (presenter != null)
+            {
                 presenter.Changed += Refresh;
+                presenter.SetActiveMember(ActiveMemberId);
+            }
+            ConfigureRootRect();
             EnsureBuilt();
             Refresh();
         }
+
+        public void SelectItemForTests(string instanceId)
+        {
+            lockIndex = 0;
+            presenter?.Select(instanceId);
+        }
+
+        public void CycleLockForTests() => CycleLock();
+
+        public Button GetButtonForTests(string name) =>
+            panelRoot == null ? null : panelRoot.transform.Find(name)?.GetComponent<Button>();
 
         public void Open(InventoryPanelMode mode)
         {
@@ -94,7 +120,11 @@ namespace BorderValley.UI.Inventory
                 panelRoot.SetActive(false);
         }
 
-        private void Awake() => EnsureBuilt();
+        private void Awake()
+        {
+            ConfigureRootRect();
+            EnsureBuilt();
+        }
 
         private void OnDestroy()
         {
@@ -123,7 +153,9 @@ namespace BorderValley.UI.Inventory
             CreateButton(panelRoot.transform, "CycleSort", InventoryTextKeys.Sort, new Vector2(0.66f, 0.89f), new Vector2(0.82f, 0.94f), CycleSort);
             CreateButton(panelRoot.transform, "Close", InventoryTextKeys.Empty, new Vector2(0.84f, 0.89f), new Vector2(0.98f, 0.94f), Close);
 
-            CreateText(panelRoot.transform, "EquipmentTitle", InventoryTextKeys.EquipmentTitle, 22, new Vector2(0.02f, 0.82f), new Vector2(0.20f, 0.87f), TextAnchor.MiddleLeft);
+            CreateText(panelRoot.transform, "EquipmentTitle", InventoryTextKeys.EquipmentTitle, 22, new Vector2(0.02f, 0.82f), new Vector2(0.14f, 0.87f), TextAnchor.MiddleLeft);
+            memberLabel = CreateText(panelRoot.transform, "Member", InventoryTextKeys.ActiveMember, 17, new Vector2(0.02f, 0.76f), new Vector2(0.14f, 0.81f), TextAnchor.MiddleLeft);
+            CreateButton(panelRoot.transform, "NextMember", InventoryTextKeys.NextMember, new Vector2(0.15f, 0.76f), new Vector2(0.20f, 0.81f), CycleMember);
             for (var index = 0; index < 6; index++)
                 equipmentLabels.Add(CreateText(panelRoot.transform, "Equipment" + index, InventoryTextKeys.Empty, 18, new Vector2(0.02f, 0.75f - index * 0.09f), new Vector2(0.20f, 0.81f - index * 0.09f), TextAnchor.MiddleLeft));
 
@@ -151,9 +183,12 @@ namespace BorderValley.UI.Inventory
             CreateButton(panelRoot.transform, "Unequip", InventoryTextKeys.Unequip, new Vector2(0.86f, 0.34f), new Vector2(0.98f, 0.40f), UnequipSelected);
             CreateButton(panelRoot.transform, "Dismantle", InventoryTextKeys.Dismantle, new Vector2(0.74f, 0.27f), new Vector2(0.85f, 0.33f), DismantleSelected);
             CreateButton(panelRoot.transform, "Reforge", InventoryTextKeys.Reforge, new Vector2(0.86f, 0.27f), new Vector2(0.98f, 0.33f), ReforgeSelected);
-            CreateText(panelRoot.transform, "CostsTitle", InventoryTextKeys.Cost, 20, new Vector2(0.74f, 0.19f), new Vector2(0.98f, 0.25f), TextAnchor.MiddleLeft);
-            costLabel = CreateText(panelRoot.transform, "Costs", InventoryTextKeys.Empty, 17, new Vector2(0.74f, 0.08f), new Vector2(0.98f, 0.19f), TextAnchor.UpperLeft);
-            CreateButton(panelRoot.transform, "Craft", InventoryTextKeys.Craft, new Vector2(0.74f, 0.01f), new Vector2(0.98f, 0.07f), CraftSelected);
+            CreateButton(panelRoot.transform, "CycleLock", InventoryTextKeys.CycleLock, new Vector2(0.74f, 0.20f), new Vector2(0.85f, 0.26f), CycleLock);
+            lockLabel = CreateText(panelRoot.transform, "Lock", InventoryTextKeys.Locked, 16, new Vector2(0.86f, 0.20f), new Vector2(0.98f, 0.26f), TextAnchor.MiddleLeft);
+            CreateText(panelRoot.transform, "CostsTitle", InventoryTextKeys.Cost, 20, new Vector2(0.74f, 0.14f), new Vector2(0.98f, 0.19f), TextAnchor.MiddleLeft);
+            costLabel = CreateText(panelRoot.transform, "Costs", InventoryTextKeys.Empty, 17, new Vector2(0.74f, 0.07f), new Vector2(0.98f, 0.14f), TextAnchor.UpperLeft);
+            CreateButton(panelRoot.transform, "RetrySave", InventoryTextKeys.RetrySave, new Vector2(0.74f, 0.01f), new Vector2(0.85f, 0.07f), RetrySave);
+            CreateButton(panelRoot.transform, "Craft", InventoryTextKeys.Craft, new Vector2(0.86f, 0.01f), new Vector2(0.98f, 0.07f), CraftSelected);
             errorLabel = CreateText(panelRoot.transform, "Error", InventoryTextKeys.Empty, 18, new Vector2(0.50f, 0.01f), new Vector2(0.73f, 0.07f), TextAnchor.MiddleLeft);
 
             panelRoot.SetActive(false);
@@ -177,6 +212,8 @@ namespace BorderValley.UI.Inventory
             filterLabel.text = FilterKey(filterIndex);
             sortLabel.text = SortKey(presenter.Sort);
             errorLabel.text = presenter.LastErrorKey;
+            memberLabel.text = InventoryTextKeys.ActiveMember + ": " + ActiveMemberId;
+            lockLabel.text = InventoryTextKeys.Locked + ": " + (presenter.LockedAffixId ?? InventoryTextKeys.Empty);
 
             var visible = presenter.VisibleItems;
             var pageCount = Math.Max(1, (visible.Count + PageSize - 1) / PageSize);
@@ -201,7 +238,7 @@ namespace BorderValley.UI.Inventory
             {
                 var slot = (ItemSlot)index;
                 var equipmentText = InventoryTextKeys.Empty;
-                if (inventory.Equipped.TryGetValue(slot, out var instanceId))
+                if (inventory.GetEquipped(ActiveMemberId).TryGetValue(slot, out var instanceId))
                 {
                     var item = inventory.Items.FirstOrDefault(value => value.InstanceId == instanceId);
                     equipmentText = item == null
@@ -216,16 +253,23 @@ namespace BorderValley.UI.Inventory
             {
                 detailLabel.text = InventoryTextKeys.Empty;
                 affixLabel.text = InventoryTextKeys.AffixRanges + ": " + InventoryTextKeys.Empty;
+                lockIndex = 0;
             }
             else
             {
                 var definition = inventory.Definitions[selected.ItemDefinitionId];
                 var stats = string.Join("\n", definition.Stats.Select(value => StatKey(value.Stat) + ": " + value.Value));
                 detailLabel.text = definition.LocalizationKey + "\n" + InventoryTextKeys.BaseStats + "\n" + stats;
+                if (lockIndex > selected.Affixes.Count) lockIndex = 0;
                 var ranges = selected.Affixes.Select(affix =>
-                    affixDefinitions.TryGetValue(affix.AffixId, out var value)
-                        ? value.LocalizationKey + ": " + value.MinValue + "-" + value.MaxValue
-                        : affix.AffixId).ToArray();
+                {
+                    var value = affixDefinitions.TryGetValue(affix.AffixId, out var definitionAffix)
+                        ? definitionAffix.LocalizationKey + ": " + definitionAffix.MinValue + "-" + definitionAffix.MaxValue
+                        : affix.AffixId;
+                    return affix.AffixId == LockedAffixId
+                        ? value + " [" + InventoryTextKeys.Locked + "]"
+                        : value;
+                }).ToArray();
                 affixLabel.text = InventoryTextKeys.AffixRanges + "\n" + string.Join("\n", ranges);
             }
 
@@ -250,8 +294,9 @@ namespace BorderValley.UI.Inventory
             };
             if (selected != null)
             {
+                var locksAffix = !string.IsNullOrWhiteSpace(presenter.LockedAffixId);
                 lines.Add(InventoryTextKeys.Cost + " " + InventoryTextKeys.Reforge + ": " +
-                    costs.ReforgeGold(selected, false) + "g/" + costs.ReforgeMaterial(selected, false) + "ore");
+                    costs.ReforgeGold(selected, locksAffix) + "g/" + costs.ReforgeMaterial(selected, locksAffix) + "ore");
             }
             if (inventory.Gold < craftGold || ore < craftOre)
                 lines.Add(InventoryTextKeys.MaterialsInsufficient);
@@ -288,6 +333,32 @@ namespace BorderValley.UI.Inventory
             Refresh();
         }
 
+        private void CycleMember()
+        {
+            if (progression == null || progression.Members.Count == 0) return;
+            memberIndex = (memberIndex + 1) % progression.Members.Count;
+            lockIndex = 0;
+            presenter.SetActiveMember(ActiveMemberId);
+            Refresh();
+        }
+
+        private void CycleLock()
+        {
+            var selected = SelectedItem();
+            if (selected == null || selected.Affixes.Count == 0) return;
+            lockIndex = (lockIndex + 1) % (selected.Affixes.Count + 1);
+            presenter.SetLockedAffix(lockIndex == 0
+                ? null
+                : selected.Affixes[lockIndex - 1].AffixId);
+            Refresh();
+        }
+
+        private void RetrySave()
+        {
+            presenter.RetrySave();
+            Refresh();
+        }
+
         private void ChangePage(int delta)
         {
             page += delta;
@@ -304,7 +375,7 @@ namespace BorderValley.UI.Inventory
 
         private void EquipSelected()
         {
-            presenter.EquipSelected(ActiveClassId);
+            presenter.EquipSelected(ActiveMemberId, ActiveClassId);
             Refresh();
         }
 
@@ -313,11 +384,11 @@ namespace BorderValley.UI.Inventory
             var selected = SelectedItem();
             if (selected == null)
             {
-                presenter.Unequip(ItemSlot.Weapon);
+                presenter.Unequip(ActiveMemberId, ItemSlot.Weapon);
             }
             else
             {
-                presenter.Unequip(inventory.Definitions[selected.ItemDefinitionId].Slot);
+                presenter.Unequip(ActiveMemberId, inventory.Definitions[selected.ItemDefinitionId].Slot);
             }
             Refresh();
         }
@@ -330,10 +401,7 @@ namespace BorderValley.UI.Inventory
 
         private void ReforgeSelected()
         {
-            var selected = SelectedItem();
-            presenter.ReforgeSelected(
-                selected?.Affixes.FirstOrDefault()?.AffixId,
-                RandomSourceFactory.FromSeed("reforge:" + presenter.SelectedInstanceId));
+            presenter.ReforgeSelected(RandomSourceFactory.FromSeed("reforge:" + presenter.SelectedInstanceId));
             Refresh();
         }
 
@@ -357,8 +425,13 @@ namespace BorderValley.UI.Inventory
             return inventory.Items.FirstOrDefault(item => item.InstanceId == presenter.SelectedInstanceId);
         }
 
+        private string ActiveMemberId =>
+            progression?.Members.ElementAtOrDefault(memberIndex)?.MemberId ?? string.Empty;
+
         private string ActiveClassId =>
-            progression?.Members.FirstOrDefault()?.CharacterId ?? "class.warrior";
+            progression?.Members.ElementAtOrDefault(memberIndex)?.CharacterId ?? "class.warrior";
+
+        private string LockedAffixId => presenter?.LockedAffixId;
 
         private static string FilterKey(int index) => index switch
         {
@@ -379,6 +452,16 @@ namespace BorderValley.UI.Inventory
 
         private static string SlotKey(ItemSlot slot) => InventoryTextKeys.SlotKey(slot);
         private static string StatKey(BorderValley.Core.Combat.CombatStat stat) => InventoryTextKeys.StatKey(stat);
+
+        private void ConfigureRootRect()
+        {
+            var rect = GetComponent<RectTransform>();
+            if (rect == null) return;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
 
         private static GameObject CreatePanel(Transform parent, string name, Vector2 min, Vector2 max)
         {

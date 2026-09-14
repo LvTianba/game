@@ -25,8 +25,13 @@ namespace BorderValley.Inventory
             _ => throw new ArgumentOutOfRangeException(nameof(rarity))
         };
 
-        public static int ValueCost(int value, AffixDefinition definition) =>
-            Math.Max(1, Math.Abs(value)) * definition.BudgetCost;
+        public static int ValueCost(int value, AffixDefinition definition)
+        {
+            var units = definition.Stat == BorderValley.Core.Combat.CombatStat.CritChanceBps
+                ? Math.Max(1, (Math.Abs(value) + 99) / 100)
+                : Math.Max(1, Math.Abs(value));
+            return units * Math.Max(1, definition.BudgetCost);
+        }
 
         public static bool IsSpecial(AffixDefinition definition) =>
             definition != null &&

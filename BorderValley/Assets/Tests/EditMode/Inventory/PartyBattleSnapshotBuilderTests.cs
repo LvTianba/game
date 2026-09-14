@@ -63,6 +63,30 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void Build_AppliesEquipmentOnlyToTheOwningMember()
+        {
+            var inventory = new InventoryService(4, Items(), 0);
+            inventory.TryAdd(
+                new ItemInstance("i.sword", "item.sword", 1, ItemRarity.Fine, Array.Empty<AffixInstance>()),
+                out _);
+            inventory.TryAdd(
+                new ItemInstance("i.boots", "item.boots", 1, ItemRarity.Fine, Array.Empty<AffixInstance>()),
+                out _);
+            inventory.TryEquip("i.sword", "player.warrior", "class.warrior", out _);
+            inventory.TryEquip("i.boots", "player.ranger", "class.ranger", out _);
+
+            var builder = new PartyBattleSnapshotBuilder(Progression(), inventory, Items(), Affixes());
+            var snapshot = builder.Build(new BattleRequest("core", "seed", "World")).PartySnapshot;
+            var warrior = snapshot.Members.Single(member => member.UnitId == "player.warrior");
+            var ranger = snapshot.Members.Single(member => member.UnitId == "player.ranger");
+
+            Assert.That(warrior.Power, Is.EqualTo(14));
+            Assert.That(warrior.Speed, Is.Zero);
+            Assert.That(ranger.Power, Is.EqualTo(7));
+            Assert.That(ranger.Speed, Is.EqualTo(3));
+        }
+
+        [Test]
         public void BattleResult_CopiesUnitStatesAndKeepsLegacyConstructor()
         {
             var states = new List<BattleUnitResult> { new("player.warrior", 7, 2) };
@@ -95,8 +119,8 @@ namespace BorderValley.Inventory.Tests
                         new AffixInstance("affix.trigger.slow", 1)
                     }),
                 out _);
-            inventory.TryEquip("i.sword", "class.warrior", out _);
-            inventory.TryEquip("i.boots", "class.warrior", out _);
+            inventory.TryEquip("i.sword", "player.warrior", "class.warrior", out _);
+            inventory.TryEquip("i.boots", "player.warrior", "class.warrior", out _);
             return inventory;
         }
 
