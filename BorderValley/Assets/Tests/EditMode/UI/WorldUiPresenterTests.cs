@@ -10,6 +10,7 @@ using BorderValley.Narrative;
 using BorderValley.UI.World;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace BorderValley.UI.World.Tests
@@ -279,6 +280,39 @@ namespace BorderValley.UI.World.Tests
         }
 
         [Test]
+        public void ShopUiPresenter_ExposesOnlyExplicitDependencyConstructor()
+        {
+            var constructors = typeof(ShopUiPresenter).GetConstructors();
+
+            Assert.That(constructors, Has.Length.EqualTo(1));
+            Assert.That(
+                constructors[0].GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[]
+                {
+                    typeof(ShopService),
+                    typeof(InventoryService),
+                    typeof(EconomyService),
+                    typeof(NarrativeStateService),
+                    typeof(IShopPanelView)
+                }));
+        }
+
+        [Test]
+        public void Open_LockedShop_ShowsUnknownShopAndDoesNotRenderAsOpen()
+        {
+            var runtime = CreateShopRuntime(unlockShop: false);
+            var view = new StubShopPanelView();
+            var presenter = new ShopUiPresenter(runtime.Shop, runtime.Inventory, runtime.Economy, runtime.State, view);
+
+            Assert.That(presenter.Open(ShopId), Is.False);
+
+            Assert.That(presenter.LastErrorKey, Is.EqualTo(NarrativeTextKeys.UnknownShop));
+            Assert.That(view.Data.ErrorKey, Is.EqualTo(NarrativeTextKeys.UnknownShop));
+            Assert.That(view.Data.BuyOffers, Is.Empty);
+            Assert.That(presenter.CurrentShopId, Is.Empty);
+        }
+
+        [Test]
         public void Sell_InvalidInstance_ShowsStableLocalizedError()
         {
             var runtime = CreateShopRuntime();
@@ -290,6 +324,86 @@ namespace BorderValley.UI.World.Tests
 
             Assert.That(presenter.LastErrorKey, Is.EqualTo(InventoryTextKeys.ItemMissing));
             Assert.That(view.Data.ErrorKey, Is.EqualTo(InventoryTextKeys.ItemMissing));
+        }
+
+        [Test]
+        public void DialoguePanelView_RepeatedRenderAndClose_DestroyChildrenImmediately()
+        {
+            var root = Track(new GameObject("DialoguePanelViewTest"));
+            var view = root.AddComponent<DialoguePanelView>();
+            view.Render(DialogueData(2));
+            var panel = view.transform.Find("DialoguePanel");
+            var choices = panel.Find("Choices");
+            var staleButton = choices.GetChild(0).GetComponent<Button>();
+            Assert.That(choices.childCount, Is.EqualTo(2));
+
+            view.Render(DialogueData(1));
+
+            Assert.That(choices.childCount, Is.EqualTo(1));
+            Assert.That(staleButton == null, Is.True);
+
+            view.SetVisible(false);
+            view.Render(DialogueData(0));
+
+            Assert.That(panel.gameObject.activeSelf, Is.False);
+            Assert.That(choices.childCount, Is.EqualTo(0));
+            var panelObject = panel.gameObject;
+            Object.DestroyImmediate(root);
+            Assert.That(panelObject == null, Is.True);
+        }
+
+        [Test]
+        public void ShopPanelView_RepeatedRenderAndClose_DestroyChildrenImmediately()
+        {
+            var root = Track(new GameObject("ShopPanelViewTest"));
+            var view = root.AddComponent<ShopPanelView>();
+            view.Render(ShopData(2, 1));
+            var panel = view.transform.Find("ShopPanel");
+            var list = panel.Find("List");
+            var staleButton = list.GetChild(0).GetComponent<Button>();
+            Assert.That(list.childCount, Is.EqualTo(2));
+
+            view.Render(ShopData(1, 1));
+
+            Assert.That(list.childCount, Is.EqualTo(1));
+            Assert.That(staleButton == null, Is.True);
+
+            view.SetVisible(false);
+            view.Render(ShopData(0, 0));
+
+            Assert.That(panel.gameObject.activeSelf, Is.False);
+            Assert.That(list.childCount, Is.EqualTo(1));
+            Assert.That(list.GetChild(0).name, Is.EqualTo("Empty"));
+            var panelObject = panel.gameObject;
+            Object.DestroyImmediate(root);
+            Assert.That(panelObject == null, Is.True);
+        }
+
+        [Test]
+        public void QuestLogPanelView_RepeatedRenderAndClose_DestroyChildrenImmediately()
+        {
+            var root = Track(new GameObject("QuestLogPanelViewTest"));
+            var view = root.AddComponent<QuestLogPanelView>();
+            view.Render(QuestData(2));
+            var panel = view.transform.Find("QuestLogPanel");
+            var entries = panel.Find("Entries");
+            var staleEntry = entries.GetChild(0).gameObject;
+            Assert.That(entries.childCount, Is.EqualTo(2));
+
+            view.Render(QuestData(1));
+
+            Assert.That(entries.childCount, Is.EqualTo(1));
+            Assert.That(staleEntry == null, Is.True);
+
+            view.SetVisible(false);
+            view.Render(QuestData(0));
+
+            Assert.That(panel.gameObject.activeSelf, Is.False);
+            Assert.That(entries.childCount, Is.EqualTo(1));
+            Assert.That(entries.GetChild(0).name, Is.EqualTo("Empty"));
+            var panelObject = panel.gameObject;
+            Object.DestroyImmediate(root);
+            Assert.That(panelObject == null, Is.True);
         }
 
         private DialogueRuntime CreateDialogueRuntime(
@@ -320,7 +434,8 @@ namespace BorderValley.UI.World.Tests
             int capacity = 8,
             int startingGold = 100,
             bool addFiller = false,
-            bool addSword = false)
+            bool addSword = false,
+            bool unlockShop = true)
         {
             var sword = CreateItem(SwordId, 200, false);
             var filler = CreateItem(FillerId, 10, false);
@@ -347,7 +462,8 @@ namespace BorderValley.UI.World.Tests
                 [FillerId] = filler
             };
             var state = new NarrativeStateService(definitions);
-            Assert.That(state.MarkShopUnlocked(ShopId), Is.True);
+            if (unlockShop)
+                Assert.That(state.MarkShopUnlocked(ShopId), Is.True);
             var inventory = new InventoryService(capacity, items, startingGold);
             var economy = new EconomyService(inventory, items, new Dictionary<string, AffixDefinition>());
             if (addFiller)
@@ -567,6 +683,48 @@ namespace BorderValley.UI.World.Tests
 
         private static ItemInstance Item(string instanceId, string definitionId) =>
             new(instanceId, definitionId, 1, ItemRarity.Common, Array.Empty<AffixInstance>());
+
+        private static DialoguePanelViewData DialogueData(int choiceCount) =>
+            new(
+                "npc.elder.name",
+                "dialogue.text",
+                Enumerable.Range(0, choiceCount)
+                    .Select(index => new DialogueChoiceBinding(
+                        index,
+                        "choice." + index,
+                        "choice." + index + ".label")),
+                false,
+                true,
+                string.Empty);
+
+        private static ShopPanelViewData ShopData(int buyCount, int sellCount) =>
+            new(
+                WorldTextKeys.ShopTitle,
+                100,
+                Enumerable.Range(0, buyCount)
+                    .Select(index => new ShopOfferBinding("offer." + index, "item." + index, 20)),
+                Enumerable.Range(0, sellCount)
+                    .Select(index => new ShopSellBinding("instance." + index, "item." + index, 8)),
+                string.Empty);
+
+        private static QuestLogPanelViewData QuestData(int entryCount) =>
+            new(
+                Enumerable.Range(0, entryCount)
+                    .Select(index => new QuestLogEntryBinding(
+                        "quest." + index,
+                        "quest." + index + ".title",
+                        "quest." + index + ".description",
+                        WorldTextKeys.QuestStateActive,
+                        new[]
+                        {
+                            new QuestObjectiveBinding(
+                                "objective." + index,
+                                "quest." + index + ".objective",
+                                1,
+                                2)
+                        },
+                        Array.Empty<QuestRewardBinding>())),
+                string.Empty);
 
         private T Track<T>(T value) where T : Object
         {

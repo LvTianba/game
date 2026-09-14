@@ -78,6 +78,15 @@ namespace BorderValley.UI.World
 
         private void OnDestroy()
         {
+            for (var index = 0; index < choiceObjects.Count; index++)
+            {
+                var button = choiceObjects[index] == null
+                    ? null
+                    : choiceObjects[index].GetComponent<Button>();
+                if (button != null)
+                    button.onClick.RemoveAllListeners();
+            }
+            choiceObjects.Clear();
             if (continueButton != null)
                 continueButton.onClick.RemoveAllListeners();
             if (closeButton != null)
@@ -110,8 +119,11 @@ namespace BorderValley.UI.World
             {
                 if (choice != null)
                 {
+                    var button = choice.GetComponent<Button>();
+                    if (button != null)
+                        button.onClick.RemoveAllListeners();
                     choice.SetActive(false);
-                    Destroy(choice);
+                    WorldPanelViewFactory.DestroyForMode(choice);
                 }
             }
             choiceObjects.Clear();
@@ -268,6 +280,15 @@ namespace BorderValley.UI.World
                 Vector2.one,
                 TextAnchor.MiddleCenter);
             return button;
+        }
+
+        public static void DestroyForMode(GameObject value)
+        {
+            if (value == null) return;
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(value);
+            else
+                UnityEngine.Object.DestroyImmediate(value);
         }
 
         private static Font GetFont()

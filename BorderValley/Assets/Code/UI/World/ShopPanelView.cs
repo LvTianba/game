@@ -83,6 +83,7 @@ namespace BorderValley.UI.World
         private Button buyTabButton;
         private Button sellTabButton;
         private Button closeButton;
+        private readonly List<Button> listButtons = new();
         private ShopTab activeTab;
         private ShopPanelViewData data;
 
@@ -98,6 +99,7 @@ namespace BorderValley.UI.World
 
         private void OnDestroy()
         {
+            ClearListButtonListeners();
             RemoveButtonListeners(buyTabButton);
             RemoveButtonListeners(sellTabButton);
             RemoveButtonListeners(closeButton);
@@ -135,11 +137,12 @@ namespace BorderValley.UI.World
         private void RebuildList()
         {
             if (listRoot == null) return;
+            ClearListButtonListeners();
             for (var index = listRoot.childCount - 1; index >= 0; index--)
             {
                 var child = listRoot.GetChild(index).gameObject;
                 child.SetActive(false);
-                Object.Destroy(child);
+                WorldPanelViewFactory.DestroyForMode(child);
             }
 
             if (data == null) return;
@@ -169,6 +172,7 @@ namespace BorderValley.UI.World
                         new Vector2(1f, 1f),
                         () => BuyRequested?.Invoke(offer.OfferId));
                     var rect = button.GetComponent<RectTransform>();
+                    listButtons.Add(button);
                     rect.pivot = new Vector2(0.5f, 1f);
                     rect.offsetMin = new Vector2(0f, -((index + 1) * 42f));
                     rect.offsetMax = new Vector2(0f, -(index * 42f));
@@ -200,6 +204,7 @@ namespace BorderValley.UI.World
                     new Vector2(1f, 1f),
                     () => SellRequested?.Invoke(item.InstanceId));
                 var rect = button.GetComponent<RectTransform>();
+                listButtons.Add(button);
                 rect.pivot = new Vector2(0.5f, 1f);
                 rect.offsetMin = new Vector2(0f, -((index + 1) * 42f));
                 rect.offsetMax = new Vector2(0f, -(index * 42f));
@@ -273,6 +278,13 @@ namespace BorderValley.UI.World
         {
             if (button != null)
                 button.onClick.RemoveAllListeners();
+        }
+
+        private void ClearListButtonListeners()
+        {
+            foreach (var button in listButtons)
+                RemoveButtonListeners(button);
+            listButtons.Clear();
         }
     }
 }

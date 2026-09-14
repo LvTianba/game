@@ -25,33 +25,11 @@ namespace BorderValley.UI.World
             this.shop = shop ?? throw new ArgumentNullException(nameof(shop));
             this.inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             this.economy = economy ?? throw new ArgumentNullException(nameof(economy));
-            this.state = state;
+            this.state = state ?? throw new ArgumentNullException(nameof(state));
             this.view = view ?? throw new ArgumentNullException(nameof(view));
             this.view.BuyRequested += offerId => Buy(offerId);
             this.view.SellRequested += instanceId => Sell(instanceId);
             this.view.CloseRequested += Close;
-        }
-
-        public ShopUiPresenter(
-            ShopService shop,
-            InventoryService inventory,
-            EconomyService economy,
-            IShopPanelView view)
-            : this(shop, inventory, economy, null, view)
-        {
-        }
-
-        public ShopUiPresenter(
-            ShopService shop,
-            InventoryService inventory,
-            IShopPanelView view)
-            : this(
-                shop,
-                inventory,
-                new EconomyService(inventory, inventory.Definitions),
-                null,
-                view)
-        {
         }
 
         public bool IsOpen { get; private set; }
@@ -62,11 +40,10 @@ namespace BorderValley.UI.World
         {
             currentShopId = shopId ?? string.Empty;
             LastErrorKey = string.Empty;
-            if (string.IsNullOrWhiteSpace(currentShopId) ||
-                (state != null && !state.HasShop(currentShopId)))
+            if (!CanOpenShop(currentShopId))
             {
                 currentShopId = string.Empty;
-                return Fail(NarrativeTextKeys.UnknownShop);
+                return Fail(NarrativeTextKeys.UnknownShop, false);
             }
 
             IsOpen = true;
@@ -110,8 +87,7 @@ namespace BorderValley.UI.World
 
         public void Refresh()
         {
-            if (string.IsNullOrWhiteSpace(currentShopId) ||
-                (state != null && !state.HasShop(currentShopId)))
+            if (!CanOpenShop(currentShopId))
             {
                 view.Render(EmptyData());
                 return;
@@ -145,16 +121,21 @@ namespace BorderValley.UI.World
                 Array.Empty<ShopSellBinding>(),
                 LastErrorKey);
 
-        private bool Fail(string error)
+        private bool Fail(string error, bool keepOpen = true)
         {
             LastErrorKey = string.IsNullOrWhiteSpace(error)
                 ? WorldTextKeys.ServiceUnavailable
                 : error;
-            IsOpen = true;
+            IsOpen = keepOpen;
             view.SetVisible(true);
             Refresh();
             return false;
         }
+
+        private bool CanOpenShop(string shopId) =>
+            !string.IsNullOrWhiteSpace(shopId) &&
+            state.HasShop(shopId) &&
+            state.IsShopUnlocked(shopId);
 
         private string GetItemKey(string definitionId)
         {

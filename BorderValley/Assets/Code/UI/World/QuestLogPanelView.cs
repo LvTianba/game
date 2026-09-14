@@ -134,7 +134,7 @@ namespace BorderValley.UI.World
             {
                 var child = entriesRoot.GetChild(index).gameObject;
                 child.SetActive(false);
-                Object.Destroy(child);
+                WorldPanelViewFactory.DestroyForMode(child);
             }
 
             if (data == null || data.Entries.Count == 0)
