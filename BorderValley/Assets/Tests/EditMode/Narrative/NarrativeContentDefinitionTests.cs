@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using BorderValley.Core.Combat;
 using BorderValley.Data;
 using BorderValley.Data.Items;
 using BorderValley.Data.Narrative;
@@ -193,15 +194,311 @@ namespace BorderValley.Narrative.Tests
             Assert.That(issues, Is.Empty);
         }
 
-        private static DialogueNodeDefinition Node(string nodeId, string nextNodeId = "") =>
+        [Test]
+        public void Validate_DuplicateWorldInteractableId_ReturnsDuplicateId()
+        {
+            var npc = Track(ScriptableObject.CreateInstance<NpcDefinition>());
+            npc.EditorConfigure("npc.test", "npc.test.name", string.Empty, string.Empty);
+            var area = Track(ScriptableObject.CreateInstance<WorldAreaDefinition>());
+            area.EditorConfigure(
+                "area.test",
+                new Rect(0f, 0f, 10f, 10f),
+                System.Array.Empty<Rect>(),
+                new[] { npc },
+                System.Array.Empty<WorldEncounterDefinition>(),
+                new[]
+                {
+                    Interactable("interaction.duplicate", "npc.test"),
+                    Interactable("interaction.duplicate", "npc.test")
+                },
+                System.Array.Empty<ItemDropTableDefinition>());
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { npc, area }).ToList();
+
+            Assert.That(issues.Count(issue => issue.Code == "duplicate_id"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Validate_SetEventTarget_RequiresDeclaredEvent()
+        {
+            var dialogue = Track(ScriptableObject.CreateInstance<DialogueDefinition>());
+            dialogue.EditorConfigure(
+                "dialogue.test",
+                "node.start",
+                new[]
+                {
+                    Node(
+                        "node.start",
+                        actions: new[]
+                        {
+                            new DialogueActionDefinition(DialogueActionKind.SetEvent, "event.missing")
+                        })
+                });
+
+            AssertIssue("missing_dialogue_node", dialogue);
+        }
+
+        [Test]
+        public void Validate_EventConditionTarget_RequiresDeclaredEvent()
+        {
+            var dialogue = Track(ScriptableObject.CreateInstance<DialogueDefinition>());
+            dialogue.EditorConfigure(
+                "dialogue.test",
+                "node.start",
+                new[]
+                {
+                    Node(
+                        "node.start",
+                        conditions: new[]
+                        {
+                            new DialogueConditionDefinition(DialogueConditionKind.Event, "event.circular")
+                        }),
+                    Node(
+                        "node.declare",
+                        actions: new[]
+                        {
+                            new DialogueActionDefinition(DialogueActionKind.SetEvent, "event.circular")
+                        })
+                });
+
+            AssertIssue("missing_dialogue_node", dialogue);
+        }
+
+        [Test]
+        public void Validate_WorldAreaEventIds_RejectEmptyValue()
+        {
+            var area = CreateArea("area.test", new[] { string.Empty });
+
+            AssertIssue("missing_id", area);
+        }
+
+        [Test]
+        public void Validate_WorldAreaEventIds_RejectOrdinalDuplicate()
+        {
+            var area = CreateArea("area.test", new[] { "event.test", "event.test" });
+
+            AssertIssue("duplicate_id", area);
+        }
+
+        [Test]
+        public void Validate_DeclaredEventRegistry_AllowsSetEventReferences()
+        {
+            var encounter = Track(ScriptableObject.CreateInstance<WorldEncounterDefinition>());
+            encounter.EditorConfigure(
+                "encounter.test",
+                "scenario.test",
+                new[] { "enemy.test" },
+                string.Empty,
+                0,
+                0,
+                Vector2.zero,
+                1f,
+                false,
+                string.Empty,
+                "event.encounter");
+            var area = Track(ScriptableObject.CreateInstance<WorldAreaDefinition>());
+            area.EditorConfigure(
+                "area.test",
+                new Rect(0f, 0f, 10f, 10f),
+                System.Array.Empty<Rect>(),
+                System.Array.Empty<NpcDefinition>(),
+                new[] { encounter },
+                new[]
+                {
+                    new WorldInteractableDefinition(
+                        "interaction.investigate",
+                        WorldInteractableKind.Investigate,
+                        "interaction.investigate.label",
+                        Vector2.zero,
+                        1f,
+                        "event.investigate",
+                        Vector2.zero,
+                        string.Empty)
+                },
+                System.Array.Empty<ItemDropTableDefinition>(),
+                new[] { "event.area" },
+                System.Array.Empty<string>());
+            var dialogue = Track(ScriptableObject.CreateInstance<DialogueDefinition>());
+            dialogue.EditorConfigure(
+                "dialogue.test",
+                "node.start",
+                new[]
+                {
+                    Node(
+                        "node.start",
+                        actions: new[]
+                        {
+                            new DialogueActionDefinition(DialogueActionKind.SetEvent, "event.area"),
+                            new DialogueActionDefinition(DialogueActionKind.SetEvent, "event.encounter"),
+                            new DialogueActionDefinition(DialogueActionKind.SetEvent, "event.investigate")
+                        })
+                });
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { encounter, area, dialogue }).ToList();
+
+            Assert.That(issues, Is.Empty);
+        }
+
+        [Test]
+        public void Validate_MissingShopRequiredEvent_ReturnsMissingWorldTarget()
+        {
+            var item = CreateItem("item.test");
+            var shop = Track(ScriptableObject.CreateInstance<ShopDefinition>());
+            shop.EditorConfigure(
+                "shop.test",
+                "shop.test.name",
+                "event.missing",
+                new[] { new ShopOfferDefinition("offer.test", item, ItemRarity.Common, 1, System.Array.Empty<AffixDefinition>()) });
+
+            AssertIssue("missing_world_target", item, shop);
+        }
+
+        [Test]
+        public void Validate_ShopCritChanceBudget_UsesHundredPointUnits()
+        {
+            var item = CreateItem("item.crit");
+            var affix = CreateAffix("affix.crit", AffixEffectKind.FlatStat, CombatStat.CritChanceBps, 1200, 1200);
+            var shop = CreateShop("shop.crit", ItemRarity.Fine, item, new[] { affix });
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { item, affix, shop }).ToList();
+
+            Assert.That(issues, Is.Empty);
+        }
+
+        [Test]
+        public void Validate_ShopCritChanceOverBudget_ReturnsMissingShopItem()
+        {
+            var item = CreateItem("item.crit");
+            var affix = CreateAffix("affix.crit", AffixEffectKind.FlatStat, CombatStat.CritChanceBps, 1300, 1300);
+            var shop = CreateShop("shop.crit", ItemRarity.Fine, item, new[] { affix });
+
+            AssertIssue("missing_shop_item", item, affix, shop);
+        }
+
+        [Test]
+        public void Validate_EpicShopOfferWithoutEligibleSpecial_ReturnsMissingShopItem()
+        {
+            var item = CreateItem("item.epic");
+            var first = CreateAffix("affix.first", AffixEffectKind.FlatStat, CombatStat.Power, 1, 1);
+            var second = CreateAffix("affix.second", AffixEffectKind.FlatStat, CombatStat.Armor, 1, 1);
+            var third = CreateAffix("affix.third", AffixEffectKind.FlatStat, CombatStat.Speed, 1, 1);
+            var special = CreateAffix("affix.special", AffixEffectKind.SkillModifier, CombatStat.Power, 1, 1);
+            var shop = CreateShop("shop.epic", ItemRarity.Epic, item, new[] { first, second, third });
+
+            AssertIssue("missing_shop_item", item, first, second, third, special, shop);
+        }
+
+        [Test]
+        public void Validate_EpicShopOfferWithEligibleSpecial_ReturnsNoIssues()
+        {
+            var item = CreateItem("item.epic");
+            var first = CreateAffix("affix.first", AffixEffectKind.FlatStat, CombatStat.Power, 1, 1);
+            var second = CreateAffix("affix.second", AffixEffectKind.FlatStat, CombatStat.Armor, 1, 1);
+            var special = CreateAffix("affix.special", AffixEffectKind.SkillModifier, CombatStat.Power, 1, 1);
+            var shop = CreateShop("shop.epic", ItemRarity.Epic, item, new[] { first, second, special });
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { item, first, second, special, shop }).ToList();
+
+            Assert.That(issues, Is.Empty);
+        }
+
+        private static DialogueNodeDefinition Node(
+            string nodeId,
+            string nextNodeId = "",
+            IEnumerable<DialogueConditionDefinition> conditions = null,
+            IEnumerable<DialogueActionDefinition> actions = null) =>
             new(
                 nodeId,
                 string.Empty,
                 "dialogue.node.text",
-                System.Array.Empty<DialogueConditionDefinition>(),
-                System.Array.Empty<DialogueActionDefinition>(),
+                conditions ?? System.Array.Empty<DialogueConditionDefinition>(),
+                actions ?? System.Array.Empty<DialogueActionDefinition>(),
                 System.Array.Empty<DialogueChoiceDefinition>(),
                 nextNodeId);
+
+        private WorldInteractableDefinition Interactable(string id, string targetId) =>
+            new(
+                id,
+                WorldInteractableKind.Npc,
+                "interaction.label",
+                Vector2.zero,
+                1f,
+                targetId,
+                Vector2.zero,
+                string.Empty);
+
+        private WorldAreaDefinition CreateArea(string id, string[] eventIds)
+        {
+            var area = Track(ScriptableObject.CreateInstance<WorldAreaDefinition>());
+            area.EditorConfigure(
+                id,
+                new Rect(0f, 0f, 10f, 10f),
+                System.Array.Empty<Rect>(),
+                System.Array.Empty<NpcDefinition>(),
+                System.Array.Empty<WorldEncounterDefinition>(),
+                System.Array.Empty<WorldInteractableDefinition>(),
+                System.Array.Empty<ItemDropTableDefinition>(),
+                eventIds,
+                System.Array.Empty<string>());
+            return area;
+        }
+
+        private ItemDefinition CreateItem(string id)
+        {
+            var item = Track(ScriptableObject.CreateInstance<ItemDefinition>());
+            item.EditorConfigure(
+                id,
+                id + ".name",
+                ItemSlot.Weapon,
+                System.Array.Empty<string>(),
+                false,
+                10,
+                System.Array.Empty<StatValue>());
+            return item;
+        }
+
+        private AffixDefinition CreateAffix(
+            string id,
+            AffixEffectKind effectKind,
+            CombatStat stat,
+            int minValue,
+            int maxValue,
+            int budgetCost = 1)
+        {
+            var affix = Track(ScriptableObject.CreateInstance<AffixDefinition>());
+            affix.EditorConfigure(
+                id,
+                id + ".name",
+                new[] { ItemSlot.Weapon },
+                ItemRarity.Common,
+                effectKind,
+                stat,
+                SkillModifierKind.Radius,
+                PassiveEffectKind.OnAttackApplySlow,
+                minValue,
+                maxValue,
+                1,
+                1,
+                1,
+                budgetCost,
+                System.Array.Empty<string>());
+            return affix;
+        }
+
+        private ShopDefinition CreateShop(
+            string id,
+            ItemRarity rarity,
+            ItemDefinition item,
+            IEnumerable<AffixDefinition> affixes)
+        {
+            var shop = Track(ScriptableObject.CreateInstance<ShopDefinition>());
+            shop.EditorConfigure(
+                id,
+                id + ".name",
+                string.Empty,
+                new[] { new ShopOfferDefinition("offer." + id, item, rarity, 1, affixes) });
+            return shop;
+        }
 
         private void AssertIssue(string expectedCode, params ContentDefinition[] definitions)
         {

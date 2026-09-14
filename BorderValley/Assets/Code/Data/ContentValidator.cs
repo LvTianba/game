@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using BorderValley.Core.Combat;
 using BorderValley.Data.Items;
 using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
@@ -256,7 +257,7 @@ namespace BorderValley.Data
 
                     foreach (var action in node.Actions)
                     {
-                        if (!IsDialogueActionTargetValid(action, npcs, quests, shops))
+                        if (!IsDialogueActionTargetValid(action, npcs, quests, shops, knownEvents))
                             yield return Issue("missing_dialogue_node", $"{dialogue.Id} action target is invalid.", dialogue);
                     }
 
@@ -279,7 +280,7 @@ namespace BorderValley.Data
 
                         foreach (var action in choice.Actions)
                         {
-                            if (!IsDialogueActionTargetValid(action, npcs, quests, shops))
+                            if (!IsDialogueActionTargetValid(action, npcs, quests, shops, knownEvents))
                                 yield return Issue("missing_dialogue_node", $"{dialogue.Id} choice action target is invalid.", dialogue);
                         }
                     }
@@ -333,9 +334,16 @@ namespace BorderValley.Data
             var all = definitions.ToArray();
             var items = ById(all.OfType<ItemDefinition>(), item => item.Id);
             var affixes = ById(all.OfType<AffixDefinition>(), affix => affix.Id);
+            var knownEvents = CollectKnownEventIds(definitions);
 
             foreach (var shop in all.OfType<ShopDefinition>())
             {
+                if (!string.IsNullOrWhiteSpace(shop.RequiredEventId) &&
+                    !knownEvents.Contains(shop.RequiredEventId))
+                {
+                    yield return Issue("missing_world_target", $"{shop.Id} event -> {shop.RequiredEventId}", shop);
+                }
+
                 var seenOfferIds = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var offer in shop.Offers)
                 {
@@ -377,13 +385,18 @@ namespace BorderValley.Data
 
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var totalCost = 0;
+            var hasSpecial = false;
+            var requiresSpecial = offer.Rarity == ItemRarity.Epic &&
+                                  affixes.Values.Any(affix =>
+                                      IsEligibleAffix(affix, offer.Item.Slot, offer.Rarity, offer.ItemLevel) &&
+                                      IsSpecialAffix(affix));
             foreach (var affix in definitions)
             {
                 if (affix == null || string.IsNullOrWhiteSpace(affix.Id) || !affixes.ContainsKey(affix.Id))
                     return "affix reference is missing";
                 if (!seen.Add(affix.Id))
                     return "duplicate affix";
-                if (affix.Weight <= 0 || !affix.Supports(offer.Item.Slot, offer.Rarity, offer.ItemLevel))
+                if (!IsEligibleAffix(affix, offer.Item.Slot, offer.Rarity, offer.ItemLevel))
                     return "affix is not eligible for the item";
                 if (seen.Any(existing =>
                         existing != affix.Id &&
@@ -392,13 +405,37 @@ namespace BorderValley.Data
                     return "affixes are mutually exclusive";
                 }
 
-                totalCost += Math.Max(1, Math.Abs(affix.MinValue)) * Math.Max(1, affix.BudgetCost);
+                hasSpecial |= IsSpecialAffix(affix);
+                totalCost += AffixValueCost(affix.MinValue, affix);
             }
 
+            if (requiresSpecial && !hasSpecial)
+                return "eligible special affix is required for epic";
             if (totalCost > AffixBudget(offer.Rarity))
                 return "affix budget is exceeded";
 
             return string.Empty;
+        }
+
+        private static bool IsEligibleAffix(
+            AffixDefinition affix,
+            ItemSlot slot,
+            ItemRarity rarity,
+            int itemLevel) =>
+            affix != null &&
+            affix.Weight > 0 &&
+            affix.Supports(slot, rarity, itemLevel);
+
+        private static bool IsSpecialAffix(AffixDefinition affix) =>
+            affix != null &&
+            affix.EffectKind is AffixEffectKind.SkillModifier or AffixEffectKind.Trigger;
+
+        private static int AffixValueCost(int value, AffixDefinition affix)
+        {
+            var units = affix.Stat == CombatStat.CritChanceBps
+                ? Math.Max(1, (Math.Abs(value) + 99) / 100)
+                : Math.Max(1, Math.Abs(value));
+            return units * Math.Max(1, affix.BudgetCost);
         }
 
         private static int ExpectedAffixCount(ItemRarity rarity) => rarity switch
@@ -447,33 +484,6 @@ namespace BorderValley.Data
                     knownEvents.Add(encounter.CompletionEventId);
             }
 
-            foreach (var dialogue in definitions.OfType<DialogueDefinition>())
-            {
-                foreach (var node in dialogue.Nodes)
-                {
-                    foreach (var action in node?.Actions ?? Array.Empty<DialogueActionDefinition>())
-                    {
-                        if (action?.Kind == DialogueActionKind.SetEvent &&
-                            !string.IsNullOrWhiteSpace(action.TargetId))
-                        {
-                            knownEvents.Add(action.TargetId);
-                        }
-                    }
-
-                    foreach (var choice in node?.Choices ?? Array.Empty<DialogueChoiceDefinition>())
-                    {
-                        foreach (var action in choice?.Actions ?? Array.Empty<DialogueActionDefinition>())
-                        {
-                            if (action?.Kind == DialogueActionKind.SetEvent &&
-                                !string.IsNullOrWhiteSpace(action.TargetId))
-                            {
-                                knownEvents.Add(action.TargetId);
-                            }
-                        }
-                    }
-                }
-            }
-
             return knownEvents;
         }
 
@@ -501,7 +511,8 @@ namespace BorderValley.Data
             DialogueActionDefinition action,
             IReadOnlyDictionary<string, NpcDefinition> npcs,
             IReadOnlyDictionary<string, QuestDefinition> quests,
-            IReadOnlyDictionary<string, ShopDefinition> shops)
+            IReadOnlyDictionary<string, ShopDefinition> shops,
+            ISet<string> knownEvents)
         {
             if (action == null || string.IsNullOrWhiteSpace(action.TargetId))
                 return false;
@@ -513,7 +524,7 @@ namespace BorderValley.Data
                 DialogueActionKind.TurnInQuest => quests.ContainsKey(action.TargetId),
                 DialogueActionKind.OpenShop => shops.ContainsKey(action.TargetId),
                 DialogueActionKind.ChangeFavor => npcs.ContainsKey(action.TargetId),
-                DialogueActionKind.SetEvent => true,
+                DialogueActionKind.SetEvent => knownEvents.Contains(action.TargetId),
                 _ => false
             };
         }
@@ -526,59 +537,7 @@ namespace BorderValley.Data
             var encounters = ById(all.OfType<WorldEncounterDefinition>(), encounter => encounter.EncounterId);
             var rewardTables = ById(all.OfType<ItemDropTableDefinition>(), table => table.Id);
             var items = ById(all.OfType<ItemDefinition>(), item => item.Id);
-            var knownEvents = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var area in areas.Values)
-            {
-                foreach (var eventId in area.EventIds)
-                {
-                    if (!string.IsNullOrWhiteSpace(eventId))
-                        knownEvents.Add(eventId);
-                }
-
-                foreach (var interactable in area.Interactables)
-                {
-                    if (interactable != null &&
-                        interactable.Kind == WorldInteractableKind.Investigate &&
-                        !string.IsNullOrWhiteSpace(interactable.TargetId))
-                    {
-                        knownEvents.Add(interactable.TargetId);
-                    }
-                }
-            }
-
-            foreach (var encounter in encounters.Values)
-            {
-                if (!string.IsNullOrWhiteSpace(encounter.CompletionEventId))
-                    knownEvents.Add(encounter.CompletionEventId);
-            }
-
-            foreach (var dialogue in all.OfType<DialogueDefinition>())
-            {
-                foreach (var node in dialogue.Nodes)
-                {
-                    foreach (var action in node?.Actions ?? Array.Empty<DialogueActionDefinition>())
-                    {
-                        if (action?.Kind == DialogueActionKind.SetEvent &&
-                            !string.IsNullOrWhiteSpace(action.TargetId))
-                        {
-                            knownEvents.Add(action.TargetId);
-                        }
-                    }
-
-                    foreach (var choice in node?.Choices ?? Array.Empty<DialogueChoiceDefinition>())
-                    {
-                        foreach (var action in choice?.Actions ?? Array.Empty<DialogueActionDefinition>())
-                        {
-                            if (action?.Kind == DialogueActionKind.SetEvent &&
-                                !string.IsNullOrWhiteSpace(action.TargetId))
-                            {
-                                knownEvents.Add(action.TargetId);
-                            }
-                        }
-                    }
-                }
-            }
+            var knownEvents = CollectKnownEventIds(all);
 
             foreach (var encounter in encounters.Values)
             {
@@ -597,6 +556,19 @@ namespace BorderValley.Data
 
             foreach (var area in areas.Values)
             {
+                var seenEventIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var eventId in area.EventIds)
+                {
+                    if (string.IsNullOrWhiteSpace(eventId))
+                    {
+                        yield return Issue("missing_id", $"{area.Id} contains an empty event ID.", area);
+                        continue;
+                    }
+
+                    if (!seenEventIds.Add(eventId))
+                        yield return Issue("duplicate_id", $"{area.Id} event -> {eventId}", area);
+                }
+
                 foreach (var npc in area.Npcs)
                 {
                     if (npc == null || !npcs.ContainsKey(npc.Id))
