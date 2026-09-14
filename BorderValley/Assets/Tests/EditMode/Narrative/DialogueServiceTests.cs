@@ -159,14 +159,14 @@ namespace BorderValley.Narrative.Tests
         }
 
         [Test]
-        public void TryChoose_WithAdvanceQuestAction_AdvancesFirstIncompleteObjective()
+        public void TryChoose_WithAdvanceQuestAction_AdvancesExplicitObjective()
         {
             var quest = CreateQuest(
                 "quest.advance",
                 Objective("objective.reach", QuestObjectiveKind.ReachLocation, "area.village", 2));
             var dialogue = CreateChoiceDialogue(
                 "dialogue.advance",
-                new[] { Action(DialogueActionKind.AdvanceQuest, quest.Id, 1) });
+                new[] { Action(DialogueActionKind.AdvanceQuest, quest.Id, 1, "objective.reach") });
             var runtime = CreateRuntime(dialogue, new[] { quest });
             Assert.That(runtime.State.TryAcceptQuest(quest.Id, out var acceptError), Is.True, acceptError);
 
@@ -302,6 +302,177 @@ namespace BorderValley.Narrative.Tests
             Assert.That(error, Is.EqualTo(NarrativeTextKeys.DialogueSessionRequired));
         }
 
+        [Test]
+        public void TryContinue_WhenAllChoicesHiddenAndNextNodeExists_Advances()
+        {
+            var dialogue = CreateDialogue(
+                "dialogue.hidden_choices",
+                "node.start",
+                Node(
+                    "node.start",
+                    "dialogue.hidden_choices.start",
+                    choices: new[]
+                    {
+                        Choice(
+                            "choice.hidden",
+                            "node.end",
+                            conditions: new[] { Condition(DialogueConditionKind.Event, ReadyEventId) },
+                            actions: new[] { Action(DialogueActionKind.SetEvent, FirstEventId) })
+                    },
+                    nextNodeId: "node.fallback"),
+                Node("node.fallback", "dialogue.hidden_choices.fallback"));
+            var runtime = CreateRuntime(dialogue);
+            Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
+            Assert.That(session.VisibleChoices, Is.Empty);
+            Assert.That(session.IsComplete, Is.False);
+            Assert.That(runtime.Service.TryChoose(session, 0, out var chooseError), Is.False);
+            Assert.That(chooseError, Is.EqualTo(NarrativeTextKeys.InvalidDialogueChoice));
+
+            Assert.That(runtime.Service.TryContinue(session, out var continueError), Is.True, continueError);
+
+            Assert.That(session.CurrentNode.NodeId, Is.EqualTo("node.fallback"));
+            Assert.That(session.VisibleChoices, Is.Empty);
+            Assert.That(session.IsComplete, Is.True);
+            Assert.That(runtime.State.HasEvent(FirstEventId), Is.False);
+        }
+
+        [Test]
+        public void TryContinue_WithLinearNodes_AdvancesAndTerminates()
+        {
+            var dialogue = CreateDialogue(
+                "dialogue.linear",
+                "node.start",
+                Node("node.start", "dialogue.linear.start", nextNodeId: "node.middle"),
+                Node("node.middle", "dialogue.linear.middle", nextNodeId: "node.end"),
+                Node("node.end", "dialogue.linear.end"));
+            var runtime = CreateRuntime(dialogue);
+            Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
+            Assert.That(session.IsComplete, Is.False);
+
+            Assert.That(runtime.Service.TryContinue(session, out var middleError), Is.True, middleError);
+            Assert.That(session.CurrentNode.NodeId, Is.EqualTo("node.middle"));
+            Assert.That(session.IsComplete, Is.False);
+
+            Assert.That(runtime.Service.TryContinue(session, out var endError), Is.True, endError);
+            Assert.That(session.CurrentNode.NodeId, Is.EqualTo("node.end"));
+            Assert.That(session.IsComplete, Is.True);
+
+            Assert.That(runtime.Service.TryContinue(session, out var terminalError), Is.False);
+            Assert.That(terminalError, Is.EqualTo(NarrativeTextKeys.DialogueComplete));
+            Assert.That(runtime.State.IsDialogueNodeRead("node.middle"), Is.True);
+            Assert.That(runtime.State.IsDialogueNodeRead("node.end"), Is.True);
+
+            Assert.That(runtime.Service.TryStart(ElderId, out var reopened, out var reopenError), Is.True, reopenError);
+            Assert.That(reopened.IsCurrentNodeRead, Is.True);
+        }
+
+        [Test]
+        public void TryContinue_WhenVisibleChoiceExists_RequiresChoice()
+        {
+            var dialogue = CreateChoiceDialogue("dialogue.choice_required", Array.Empty<DialogueActionDefinition>());
+            var runtime = CreateRuntime(dialogue);
+            Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
+            Assert.That(session.VisibleChoices.Count, Is.EqualTo(1));
+
+            Assert.That(runtime.Service.TryContinue(session, out var error), Is.False);
+            Assert.That(error, Is.EqualTo(NarrativeTextKeys.DialogueChoiceRequired));
+        }
+
+        [Test]
+        public void TryChoose_WhenChoiceConditionsHide_DoesNotCrossVisibleIndexRange()
+        {
+            var dialogue = CreateDialogue(
+                "dialogue.hidden_index",
+                "node.start",
+                Node(
+                    "node.start",
+                    "dialogue.hidden_index.start",
+                    choices: new[]
+                    {
+                        Choice("choice.fallback", "node.end"),
+                        Choice(
+                            "choice.item",
+                            "node.end",
+                            conditions: new[] { Condition(DialogueConditionKind.HasItem, HerbId) },
+                            actions: new[] { Action(DialogueActionKind.SetEvent, FirstEventId) })
+                    }),
+                Node("node.end", "dialogue.hidden_index.end"));
+            var runtime = CreateRuntime(dialogue);
+            Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
+            Assert.That(runtime.Inventory.TryAdd(Item("herb.1", HerbId), out var addError), Is.True, addError);
+            Assert.That(session.VisibleChoices.Count, Is.EqualTo(2));
+
+            Assert.That(runtime.Inventory.TryRemove("herb.1"), Is.True);
+            Assert.That(session.VisibleChoices.Count, Is.EqualTo(1));
+
+            Assert.That(runtime.Service.TryChoose(session, 1, out var error), Is.False);
+            Assert.That(error, Is.EqualTo(NarrativeTextKeys.InvalidDialogueChoice));
+            Assert.That(runtime.State.HasEvent(FirstEventId), Is.False);
+        }
+
+        [Test]
+        public void TryChoose_WithAdvanceQuestAction_UsesExplicitObjectiveIdNotOrder()
+        {
+            var quest = CreateQuest(
+                "quest.advance_order",
+                Objective("objective.second", QuestObjectiveKind.DefeatEnemy, "enemy.second", 1),
+                Objective("objective.first", QuestObjectiveKind.DefeatEnemy, "enemy.first", 1));
+            var dialogue = CreateChoiceDialogue(
+                "dialogue.advance_order",
+                new[] { Action(DialogueActionKind.AdvanceQuest, quest.Id, 1, "objective.first") });
+            var runtime = CreateRuntime(dialogue, new[] { quest });
+            Assert.That(runtime.State.TryAcceptQuest(quest.Id, out var acceptError), Is.True, acceptError);
+
+            var session = StartAndChoose(runtime, out var error);
+
+            Assert.That(error, Is.Empty);
+            Assert.That(session.IsComplete, Is.True);
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "objective.first"), Is.EqualTo(1));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "objective.second"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void TryChoose_WhenAdvanceQuestObjectiveDoesNotExist_ReturnsErrorAndDoesNotAdvance()
+        {
+            var quest = CreateQuest(
+                "quest.advance_missing",
+                Objective("objective.valid", QuestObjectiveKind.DefeatEnemy, "enemy.valid", 1));
+            var dialogue = CreateChoiceDialogue(
+                "dialogue.advance_missing",
+                new[] { Action(DialogueActionKind.AdvanceQuest, quest.Id, 1, "objective.missing") });
+            var runtime = CreateRuntime(dialogue, new[] { quest });
+            Assert.That(runtime.State.TryAcceptQuest(quest.Id, out var acceptError), Is.True, acceptError);
+
+            Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
+            Assert.That(runtime.Service.TryChoose(session, 0, out var error), Is.False);
+
+            Assert.That(error, Is.EqualTo(NarrativeTextKeys.QuestObjectiveInvalid));
+            Assert.That(runtime.State.GetObjectiveProgress(quest.Id, "objective.valid"), Is.EqualTo(0));
+            Assert.That(runtime.State.GetQuestState(quest.Id), Is.EqualTo(QuestState.Active));
+        }
+
+        [Test]
+        public void TryChoose_WhenAdvanceQuestObjectiveBelongsToOtherQuest_ReturnsErrorAndDoesNotAdvance()
+        {
+            var target = CreateQuest(
+                "quest.advance_target",
+                Objective("objective.target", QuestObjectiveKind.DefeatEnemy, "enemy.target", 1));
+            var other = CreateQuest(
+                "quest.advance_other",
+                Objective("objective.other", QuestObjectiveKind.DefeatEnemy, "enemy.other", 1));
+            var dialogue = CreateChoiceDialogue(
+                "dialogue.advance_foreign_objective",
+                new[] { Action(DialogueActionKind.AdvanceQuest, target.Id, 1, "objective.other") });
+            var runtime = CreateRuntime(dialogue, new[] { target, other });
+            Assert.That(runtime.State.TryAcceptQuest(target.Id, out var acceptError), Is.True, acceptError);
+
+            Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
+            Assert.That(runtime.Service.TryChoose(session, 0, out var error), Is.False);
+
+            Assert.That(error, Is.EqualTo(NarrativeTextKeys.QuestObjectiveInvalid));
+            Assert.That(runtime.State.GetObjectiveProgress(target.Id, "objective.target"), Is.EqualTo(0));
+            Assert.That(runtime.State.GetQuestState(other.Id), Is.EqualTo(QuestState.NotStarted));
+        }
         private static DialogueSession StartAndChoose(Runtime runtime, out string error)
         {
             Assert.That(runtime.Service.TryStart(ElderId, out var session, out var startError), Is.True, startError);
@@ -427,8 +598,9 @@ namespace BorderValley.Narrative.Tests
         private static DialogueActionDefinition Action(
             DialogueActionKind kind,
             string targetId,
-            int amount = 1) =>
-            new(kind, targetId, amount);
+            int amount = 1,
+            string objectiveId = "") =>
+            new(kind, targetId, objectiveId, amount);
 
         private QuestDefinition CreateQuest(string id, params QuestObjectiveDefinition[] objectives)
         {

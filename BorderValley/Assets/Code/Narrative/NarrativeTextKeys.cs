@@ -13,6 +13,7 @@ namespace BorderValley.Narrative
         public const string NoAvailableDialogueNode = "narrative.error.no_available_dialogue_node";
         public const string InvalidDialogueChoice = "narrative.error.invalid_dialogue_choice";
         public const string InvalidDialogueAction = "narrative.error.invalid_dialogue_action";
+        public const string DialogueChoiceRequired = "narrative.error.dialogue_choice_required";
         public const string DialogueComplete = "narrative.error.dialogue_complete";
         public const string DialogueSessionRequired = "narrative.error.dialogue_session_required";
         public const string InvalidPosition = "narrative.error.invalid_position";

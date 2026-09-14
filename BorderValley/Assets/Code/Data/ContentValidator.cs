@@ -530,10 +530,21 @@ namespace BorderValley.Data
             if (action == null || string.IsNullOrWhiteSpace(action.TargetId))
                 return false;
 
+            if (action.Kind == DialogueActionKind.AdvanceQuest)
+            {
+                return quests.TryGetValue(action.TargetId, out var quest) &&
+                       !string.IsNullOrWhiteSpace(action.ObjectiveId) &&
+                       (quest.Objectives ?? Array.Empty<QuestObjectiveDefinition>()).Any(objective =>
+                           objective != null &&
+                           string.Equals(objective.ObjectiveId, action.ObjectiveId, StringComparison.Ordinal));
+            }
+
+            if (!string.IsNullOrWhiteSpace(action.ObjectiveId))
+                return false;
+
             return action.Kind switch
             {
                 DialogueActionKind.AcceptQuest => quests.ContainsKey(action.TargetId),
-                DialogueActionKind.AdvanceQuest => quests.ContainsKey(action.TargetId),
                 DialogueActionKind.TurnInQuest => quests.ContainsKey(action.TargetId),
                 DialogueActionKind.OpenShop => shops.ContainsKey(action.TargetId),
                 DialogueActionKind.ChangeFavor => npcs.ContainsKey(action.TargetId),

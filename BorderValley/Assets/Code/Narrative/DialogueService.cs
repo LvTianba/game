@@ -139,6 +139,46 @@ namespace BorderValley.Narrative
             return true;
         }
 
+        public bool TryContinue(DialogueSession session, out string error)
+        {
+            if (session == null)
+            {
+                error = NarrativeTextKeys.DialogueSessionRequired;
+                return false;
+            }
+            if (session.VisibleChoices.Count > 0)
+            {
+                error = NarrativeTextKeys.DialogueChoiceRequired;
+                return false;
+            }
+            if (session.IsComplete || string.IsNullOrWhiteSpace(session.CurrentNode.NextNodeId))
+            {
+                error = NarrativeTextKeys.DialogueComplete;
+                return false;
+            }
+
+            var stateSnapshot = state.Capture();
+            var inventorySnapshot = inventory.Capture();
+            var progressionSnapshot = progression?.Capture();
+            if (!TryFindAvailableNode(
+                    session.Dialogue,
+                    session.CurrentNode.NextNodeId,
+                    out var nextNode,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!TryPrepareNode(nextNode, out var wasRead, out var choices, out var nodeShopId, out error))
+            {
+                Restore(progressionSnapshot, inventorySnapshot, stateSnapshot);
+                return false;
+            }
+
+            session.EnterNode(nextNode, wasRead, choices, nodeShopId);
+            error = string.Empty;
+            return true;
+        }
         private bool TryFindAvailableNode(
             DialogueDefinition dialogue,
             string startNodeId,

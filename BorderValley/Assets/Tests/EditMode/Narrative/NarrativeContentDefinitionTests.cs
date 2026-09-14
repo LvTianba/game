@@ -440,6 +440,94 @@ namespace BorderValley.Narrative.Tests
             Assert.That(issues, Is.Empty);
         }
 
+        [Test]
+        public void Validate_AdvanceQuestWithoutObjectiveId_ReturnsMissingDialogueNode()
+        {
+            var quest = CreateQuestWithObjective("quest.advance", "objective.advance");
+            var dialogue = CreateActionDialogue(
+                "dialogue.advance",
+                new DialogueActionDefinition(DialogueActionKind.AdvanceQuest, quest.Id));
+
+            AssertIssue("missing_dialogue_node", quest, dialogue);
+        }
+
+        [Test]
+        public void Validate_AdvanceQuestWithObjectiveFromOtherQuest_ReturnsMissingDialogueNode()
+        {
+            var quest = CreateQuestWithObjective("quest.advance", "objective.advance");
+            var other = CreateQuestWithObjective("quest.other", "objective.other");
+            var dialogue = CreateActionDialogue(
+                "dialogue.advance",
+                new DialogueActionDefinition(
+                    DialogueActionKind.AdvanceQuest,
+                    quest.Id,
+                    other.Objectives[0].ObjectiveId));
+
+            AssertIssue("missing_dialogue_node", quest, other, dialogue);
+        }
+
+        [Test]
+        public void Validate_NonAdvanceQuestWithObjectiveId_ReturnsMissingDialogueNode()
+        {
+            var quest = CreateQuestWithObjective("quest.accept", "objective.accept");
+            var dialogue = CreateActionDialogue(
+                "dialogue.accept",
+                new DialogueActionDefinition(
+                    DialogueActionKind.AcceptQuest,
+                    quest.Id,
+                    quest.Objectives[0].ObjectiveId));
+
+            AssertIssue("missing_dialogue_node", quest, dialogue);
+        }
+
+        [Test]
+        public void Validate_AdvanceQuestWithOwnedObjectiveId_ReturnsNoIssues()
+        {
+            var quest = CreateQuestWithObjective("quest.advance", "objective.advance");
+            var dialogue = CreateActionDialogue(
+                "dialogue.advance",
+                new DialogueActionDefinition(
+                    DialogueActionKind.AdvanceQuest,
+                    quest.Id,
+                    quest.Objectives[0].ObjectiveId));
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { quest, dialogue }).ToList();
+
+            Assert.That(issues, Is.Empty);
+        }
+        private QuestDefinition CreateQuestWithObjective(string questId, string objectiveId)
+        {
+            var quest = Track(ScriptableObject.CreateInstance<QuestDefinition>());
+            quest.EditorConfigure(
+                questId,
+                questId + ".title",
+                questId + ".description",
+                System.Array.Empty<string>(),
+                new[]
+                {
+                    new QuestObjectiveDefinition(
+                        objectiveId,
+                        QuestObjectiveKind.DefeatEnemy,
+                        "enemy.test",
+                        1,
+                        false,
+                        "quest.objective")
+                },
+                System.Array.Empty<QuestRewardDefinition>());
+            return quest;
+        }
+
+        private DialogueDefinition CreateActionDialogue(
+            string dialogueId,
+            DialogueActionDefinition action)
+        {
+            var dialogue = Track(ScriptableObject.CreateInstance<DialogueDefinition>());
+            dialogue.EditorConfigure(
+                dialogueId,
+                "node.start",
+                new[] { Node("node.start", actions: new[] { action }) });
+            return dialogue;
+        }
         private static DialogueNodeDefinition Node(
             string nodeId,
             string nextNodeId = "",

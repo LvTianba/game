@@ -10,6 +10,7 @@ namespace BorderValley.Narrative
         private readonly Func<DialogueChoiceDefinition, bool> choiceIsVisible;
         private IReadOnlyList<DialogueChoiceDefinition> allChoices =
             Array.Empty<DialogueChoiceDefinition>();
+        private bool completed;
 
         internal DialogueSession(
             DialogueDefinition dialogue,
@@ -28,7 +29,9 @@ namespace BorderValley.Narrative
         public IReadOnlyList<DialogueChoiceDefinition> VisibleChoices =>
             allChoices.Where(choiceIsVisible).ToArray();
         public string OpenedShopId { get; private set; } = string.Empty;
-        public bool IsComplete { get; private set; }
+        public bool IsComplete => completed ||
+                                   (VisibleChoices.Count == 0 &&
+                                    string.IsNullOrWhiteSpace(CurrentNode.NextNodeId));
         public bool IsCurrentNodeRead { get; private set; }
         public bool ShouldSkipCurrentNodeText => IsCurrentNodeRead;
 
@@ -41,8 +44,8 @@ namespace BorderValley.Narrative
             CurrentNode = node ?? throw new ArgumentNullException(nameof(node));
             IsCurrentNodeRead = isCurrentNodeRead;
             allChoices = choices ?? Array.Empty<DialogueChoiceDefinition>();
+            completed = false;
             if (!string.IsNullOrWhiteSpace(openedShopId)) OpenedShopId = openedShopId;
-            IsComplete = allChoices.Count == 0 && string.IsNullOrWhiteSpace(node.NextNodeId);
         }
 
         internal void SetOpenedShopId(string shopId)
@@ -53,7 +56,7 @@ namespace BorderValley.Narrative
         internal void Complete()
         {
             allChoices = Array.Empty<DialogueChoiceDefinition>();
-            IsComplete = true;
+            completed = true;
         }
     }
 }

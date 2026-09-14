@@ -111,6 +111,11 @@ namespace BorderValley.Narrative
                 error = NarrativeTextKeys.QuestNotFound;
                 return false;
             }
+            if (!HasObjective(quest, action.ObjectiveId))
+            {
+                error = NarrativeTextKeys.QuestObjectiveInvalid;
+                return false;
+            }
 
             var questState = state.GetQuestState(quest.Id);
             if (questState == QuestState.Completed)
@@ -129,21 +134,19 @@ namespace BorderValley.Narrative
                 return false;
             }
 
-            var objective = quest.Objectives.FirstOrDefault(candidate =>
-                candidate != null &&
-                state.GetObjectiveProgress(quest.Id, candidate.ObjectiveId) < candidate.RequiredCount);
-            if (objective == null || string.IsNullOrWhiteSpace(objective.ObjectiveId))
-            {
-                error = NarrativeTextKeys.QuestNotReady;
-                return false;
-            }
-
             return state.TryAdvanceQuestObjective(
                 quest.Id,
-                objective.ObjectiveId,
+                action.ObjectiveId,
                 action.Amount,
                 out error);
         }
+
+        private static bool HasObjective(QuestDefinition quest, string objectiveId) =>
+            quest != null &&
+            !string.IsNullOrWhiteSpace(objectiveId) &&
+            (quest.Objectives ?? Array.Empty<QuestObjectiveDefinition>()).Any(objective =>
+                objective != null &&
+                string.Equals(objective.ObjectiveId, objectiveId, StringComparison.Ordinal));
 
         private bool TryValidate(DialogueActionDefinition action, out string error)
         {
@@ -153,10 +156,32 @@ namespace BorderValley.Narrative
                 return false;
             }
 
+            if (action.Kind == DialogueActionKind.AdvanceQuest)
+            {
+                if (!questDefinitions.TryGetValue(action.TargetId, out var quest))
+                {
+                    error = NarrativeTextKeys.QuestNotFound;
+                    return false;
+                }
+                if (!HasObjective(quest, action.ObjectiveId))
+                {
+                    error = NarrativeTextKeys.QuestObjectiveInvalid;
+                    return false;
+                }
+
+                error = string.Empty;
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(action.ObjectiveId))
+            {
+                error = NarrativeTextKeys.InvalidDialogueAction;
+                return false;
+            }
+
             var valid = action.Kind switch
             {
                 DialogueActionKind.AcceptQuest => questDefinitions.ContainsKey(action.TargetId),
-                DialogueActionKind.AdvanceQuest => questDefinitions.ContainsKey(action.TargetId),
                 DialogueActionKind.TurnInQuest => questDefinitions.ContainsKey(action.TargetId),
                 DialogueActionKind.OpenShop => shopIds.Contains(action.TargetId),
                 DialogueActionKind.ChangeFavor => npcIds.Contains(action.TargetId),
@@ -172,7 +197,6 @@ namespace BorderValley.Narrative
             error = action.Kind switch
             {
                 DialogueActionKind.AcceptQuest => NarrativeTextKeys.QuestNotFound,
-                DialogueActionKind.AdvanceQuest => NarrativeTextKeys.QuestNotFound,
                 DialogueActionKind.TurnInQuest => NarrativeTextKeys.QuestNotFound,
                 DialogueActionKind.OpenShop => NarrativeTextKeys.UnknownShop,
                 DialogueActionKind.ChangeFavor => NarrativeTextKeys.UnknownNpc,
