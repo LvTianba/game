@@ -19,6 +19,7 @@ namespace BorderValley.UI.Battle
         private BattleUiPresenter presenter;
         private BattleGridView gridView;
         private BattleHudView hudView;
+        private BattleContext battleContext;
         private string returnScene = string.Empty;
         private Coroutine enemyTurnRoutine;
         private bool enemyTurnLoopActive;
@@ -50,6 +51,7 @@ namespace BorderValley.UI.Battle
                 seed = request.Seed;
                 returnScene = request.ReturnScene;
                 partySnapshot = request.PartySnapshot;
+                battleContext = request.Context;
             }
 
             presenter = new BattleUiPresenter(
@@ -118,12 +120,13 @@ namespace BorderValley.UI.Battle
             continueHandled = true;
             var unitStates = presenter.Engine.State.Units
                 .Where(unit => unit.Team == Team.Player)
-                .Select(unit => new BattleUnitResult(unit.Id, unit.Health, unit.Mana))
+                .Select(unit => new BattleUnitResult(unit.Id, unit.DefinitionId, unit.Health, unit.Mana))
                 .ToArray();
             flow.CompleteBattle(new BattleResult(
                 MapOutcome(presenter.Outcome),
                 presenter.Engine.State.Round,
-                unitStates));
+                unitStates,
+                battleContext));
 
             if (string.IsNullOrWhiteSpace(returnScene) || GameBootstrapper.Context == null)
                 return;

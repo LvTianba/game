@@ -7,15 +7,24 @@ namespace BorderValley.Core.BattleFlow
     public sealed class BattleUnitResult
     {
         public BattleUnitResult(string unitId, int health, int mana)
+            : this(unitId, unitId, health, mana)
+        {
+        }
+
+        public BattleUnitResult(string unitId, string definitionId, int health, int mana)
         {
             UnitId = string.IsNullOrWhiteSpace(unitId)
                 ? throw new ArgumentException(nameof(unitId))
                 : unitId;
+            DefinitionId = string.IsNullOrWhiteSpace(definitionId)
+                ? throw new ArgumentException(nameof(definitionId))
+                : definitionId;
             Health = Math.Max(0, health);
             Mana = Math.Max(0, mana);
         }
 
         public string UnitId { get; }
+        public string DefinitionId { get; }
         public int Health { get; }
         public int Mana { get; }
     }
@@ -31,15 +40,26 @@ namespace BorderValley.Core.BattleFlow
             BattleFlowOutcome outcome,
             int rounds,
             IEnumerable<BattleUnitResult> unitStates)
+            : this(outcome, rounds, unitStates, null)
+        {
+        }
+
+        public BattleResult(
+            BattleFlowOutcome outcome,
+            int rounds,
+            IEnumerable<BattleUnitResult> unitStates,
+            BattleContext context)
         {
             Outcome = outcome;
             Rounds = rounds < 0 ? 0 : rounds;
             UnitStates = Copy(unitStates);
+            Context = context;
         }
 
         public BattleFlowOutcome Outcome { get; }
         public int Rounds { get; }
         public IReadOnlyList<BattleUnitResult> UnitStates { get; }
+        public BattleContext Context { get; }
 
         private static IReadOnlyList<BattleUnitResult> Copy(IEnumerable<BattleUnitResult> values)
         {

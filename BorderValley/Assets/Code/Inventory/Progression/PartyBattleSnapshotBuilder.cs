@@ -33,7 +33,8 @@ namespace BorderValley.Inventory
                 request.ScenarioId,
                 request.Seed,
                 request.ReturnScene,
-                BuildPartySnapshot());
+                BuildPartySnapshot(),
+                request.Context);
         }
 
         public BattlePartySnapshot BuildPartySnapshot()
