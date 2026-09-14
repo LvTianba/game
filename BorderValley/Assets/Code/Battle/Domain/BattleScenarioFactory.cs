@@ -115,7 +115,7 @@ namespace BorderValley.Battle.Domain
 
             state.AddUnit(CreateUnit(
                 "enemy.bandit",
-                "unit.bandit",
+                "enemy.bandit",
                 Team.Enemy,
                 20,
                 0,
@@ -127,7 +127,7 @@ namespace BorderValley.Battle.Domain
                 new GridPosition(5, 2)));
             state.AddUnit(CreateUnit(
                 "enemy.ranger",
-                "unit.ranger",
+                "enemy.ranger",
                 Team.Enemy,
                 18,
                 10,
@@ -139,7 +139,7 @@ namespace BorderValley.Battle.Domain
                 new GridPosition(6, 2)));
             state.AddUnit(CreateUnit(
                 "enemy.mage",
-                "unit.mage",
+                "enemy.mage",
                 Team.Enemy,
                 15,
                 16,
@@ -269,7 +269,7 @@ namespace BorderValley.Battle.Domain
 
             state.AddUnit(CreateUnit(
                 "enemy.bandit",
-                "unit.bandit",
+                "enemy.bandit",
                 Team.Enemy,
                 20,
                 0,
@@ -281,7 +281,7 @@ namespace BorderValley.Battle.Domain
                 new GridPosition(5, 2)));
             state.AddUnit(CreateUnit(
                 "enemy.ranger",
-                "unit.ranger",
+                "enemy.ranger",
                 Team.Enemy,
                 18,
                 10,
@@ -293,7 +293,7 @@ namespace BorderValley.Battle.Domain
                 new GridPosition(6, 2)));
             state.AddUnit(CreateUnit(
                 "enemy.mage",
-                "unit.mage",
+                "enemy.mage",
                 Team.Enemy,
                 15,
                 16,

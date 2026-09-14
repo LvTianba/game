@@ -49,17 +49,37 @@ namespace BorderValley.Core.BattleFlow
             int rounds,
             IEnumerable<BattleUnitResult> unitStates,
             BattleContext context)
+            : this(outcome, rounds, unitStates, context, Array.Empty<string>())
+        {
+        }
+
+        public BattleResult(
+            BattleFlowOutcome outcome,
+            int rounds,
+            IEnumerable<BattleUnitResult> unitStates,
+            BattleContext context,
+            IEnumerable<string> defeatedEnemyIds)
         {
             Outcome = outcome;
             Rounds = rounds < 0 ? 0 : rounds;
             UnitStates = Copy(unitStates);
             Context = context;
+            DefeatedEnemyIds = CopyDefeatedEnemyIds(defeatedEnemyIds);
         }
 
         public BattleFlowOutcome Outcome { get; }
         public int Rounds { get; }
         public IReadOnlyList<BattleUnitResult> UnitStates { get; }
         public BattleContext Context { get; }
+        public IReadOnlyList<string> DefeatedEnemyIds { get; }
+
+        private static IReadOnlyList<string> CopyDefeatedEnemyIds(IEnumerable<string> values)
+        {
+            var copy = (values ?? Array.Empty<string>()).ToArray();
+            if (copy.Any(string.IsNullOrWhiteSpace))
+                throw new ArgumentException("Defeated enemy IDs cannot contain blank values.", nameof(values));
+            return Array.AsReadOnly(copy);
+        }
 
         private static IReadOnlyList<BattleUnitResult> Copy(IEnumerable<BattleUnitResult> values)
         {

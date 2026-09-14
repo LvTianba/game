@@ -73,8 +73,11 @@ namespace BorderValley.UI.Battle
                 GameBootstrapper.Context.TryGet(out economy);
                 GameBootstrapper.Context.TryGet(out banditDropTable);
                 GameBootstrapper.Context.TryGet(out saveService);
+                GameBootstrapper.Context.TryGet(out questService);
+                GameBootstrapper.Context.TryGet(out narrativeState);
             }
 
+            LoadSettlementContent();
             var canvasObject = CreateCanvas();
             CreateEventSystemIfMissing();
             CreateButtons(canvasObject.transform);

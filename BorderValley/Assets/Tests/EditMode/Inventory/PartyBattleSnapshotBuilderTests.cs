@@ -90,13 +90,24 @@ namespace BorderValley.Inventory.Tests
         public void BattleResult_CopiesUnitStatesAndKeepsLegacyConstructor()
         {
             var states = new List<BattleUnitResult> { new("player.warrior", 7, 2) };
+            var defeated = new List<string> { "enemy.bandit", "enemy.bandit" };
             var result = new BattleResult(BattleFlowOutcome.PlayerVictory, 3, states);
+            var contextful = new BattleResult(
+                BattleFlowOutcome.PlayerVictory,
+                3,
+                states,
+                null,
+                defeated);
             var legacy = new BattleResult(BattleFlowOutcome.EnemyVictory, 1);
             states.Clear();
+            defeated.Clear();
             Assert.That(result.UnitStates.Single().UnitId, Is.EqualTo("player.warrior"));
             Assert.That(result.UnitStates.Single().Health, Is.EqualTo(7));
             Assert.That(result.UnitStates.Single().Mana, Is.EqualTo(2));
+            Assert.That(result.DefeatedEnemyIds, Is.Empty);
+            Assert.That(contextful.DefeatedEnemyIds, Is.EqualTo(new[] { "enemy.bandit", "enemy.bandit" }));
             Assert.That(legacy.UnitStates, Is.Empty);
+            Assert.That(legacy.DefeatedEnemyIds, Is.Empty);
         }
 
         private static InventoryService InventoryWithSwordAndBoots()

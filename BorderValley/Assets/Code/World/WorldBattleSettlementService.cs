@@ -126,9 +126,10 @@ namespace BorderValley.World
 
                 if (!legacySettlement)
                 {
-                    foreach (var enemyDefinitionId in defeatedEnemyIds)
+                    foreach (var group in defeatedEnemyIds
+                                 .GroupBy(value => value, StringComparer.Ordinal))
                     {
-                        if (questService.RecordBattleDefeat(enemyDefinitionId, out var questError))
+                        if (questService.RecordBattleDefeat(group.Key, group.Count(), out var questError))
                             continue;
 
                         Restore(inventorySnapshot, progressionSnapshot, narrativeSnapshot);
@@ -216,11 +217,7 @@ namespace BorderValley.World
         }
 
         private static IReadOnlyList<string> DefeatedEnemyIds(BattleResult result) =>
-            result.UnitStates
-                .Where(state => state != null && !string.IsNullOrWhiteSpace(state.DefinitionId))
-                .Select(state => state.DefinitionId)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+            result.DefeatedEnemyIds.ToArray();
 
         private void Restore(
             Newtonsoft.Json.Linq.JObject inventorySnapshot,

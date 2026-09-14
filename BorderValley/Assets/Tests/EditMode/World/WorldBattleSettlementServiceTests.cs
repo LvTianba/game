@@ -34,7 +34,7 @@ namespace BorderValley.World.Tests
             var fixture = CreateFixture();
             Assert.That(fixture.Quests.TryAccept(fixture.Quest.Id, out var acceptError), Is.True, acceptError);
             var service = CreateService(fixture, "seed.reward");
-            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory);
+            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory, new[] { "enemy.bandit" });
 
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.True);
 
@@ -78,7 +78,7 @@ namespace BorderValley.World.Tests
                 Is.True,
                 addError);
             var service = CreateService(fixture, "seed.full");
-            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory);
+            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory, new[] { "enemy.bandit" });
 
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.False);
 
@@ -94,6 +94,24 @@ namespace BorderValley.World.Tests
         }
 
         [Test]
+        public void Settle_PlayerVictory_RepeatedEnemyDefinitionIds_AdvanceQuestByCount()
+        {
+            var fixture = CreateFixture(questRequiredCount: 2);
+            Assert.That(fixture.Quests.TryAccept(fixture.Quest.Id, out var acceptError), Is.True, acceptError);
+            var service = CreateService(fixture, "seed.repeated-enemy");
+            var result = CreateResult(
+                fixture,
+                BattleFlowOutcome.PlayerVictory,
+                new[] { "enemy.bandit", "enemy.bandit" });
+
+            Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.True);
+
+            Assert.That(settlement.DefeatedEnemyIds, Is.EqualTo(new[] { "enemy.bandit", "enemy.bandit" }));
+            Assert.That(
+                fixture.State.GetObjectiveProgress(fixture.Quest.Id, "objective.bandit"),
+                Is.EqualTo(2));
+        }
+        [Test]
         public void Settle_PlayerVictory_WhenLaterQuestProgressFails_RollsBackEveryAppliedChange()
         {
             var fixture = CreateFixture(brokenMultiEnemyQuest: true);
@@ -102,8 +120,9 @@ namespace BorderValley.World.Tests
             var result = CreateResult(
                 fixture,
                 BattleFlowOutcome.PlayerVictory,
-                new BattleUnitResult("player.warrior", "enemy.bandit", 25, 5),
-                new BattleUnitResult("player.warrior", "enemy.wolf", 25, 5));
+                new[] { "enemy.bandit", "enemy.wolf" },
+                new BattleUnitResult("player.warrior", "class.warrior", 25, 5),
+                new BattleUnitResult("player.warrior", "class.warrior", 25, 5));
 
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.False);
 
@@ -141,7 +160,7 @@ namespace BorderValley.World.Tests
                 fixture.Encounter.RequiredEventId,
                 "event.test.unknown");
             var service = CreateService(fixture, "seed.completion-failure");
-            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory);
+            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory, new[] { "enemy.bandit" });
 
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.False);
 
@@ -161,7 +180,7 @@ namespace BorderValley.World.Tests
             snapshot["safePointId"] = "world.deep";
             fixture.Progression.Restore(snapshot);
             var service = CreateService(fixture, "seed.defeat");
-            var result = CreateResult(fixture, BattleFlowOutcome.EnemyVictory, new BattleUnitResult("player.warrior", "enemy.bandit", 0, 0));
+            var result = CreateResult(fixture, BattleFlowOutcome.EnemyVictory, Array.Empty<string>(), new BattleUnitResult("player.warrior", "enemy.bandit", 0, 0));
 
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.True);
 
@@ -187,7 +206,7 @@ namespace BorderValley.World.Tests
             var fixture = CreateFixture(repeatable: true);
             Assert.That(fixture.Quests.TryAccept(fixture.Quest.Id, out var acceptError), Is.True, acceptError);
             var service = CreateService(fixture, "seed.repeatable");
-            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory);
+            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory, new[] { "enemy.bandit" });
 
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.True);
 
@@ -212,7 +231,7 @@ namespace BorderValley.World.Tests
         {
             var fixture = CreateFixture();
             var service = CreateService(fixture, seed);
-            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory);
+            var result = CreateResult(fixture, BattleFlowOutcome.PlayerVictory, new[] { "enemy.bandit" });
             Assert.That(service.Settle(result, fixture.Encounter, out var settlement), Is.True, settlement.ErrorKey);
             return fixture.Inventory.Items.Single();
         }
@@ -233,7 +252,8 @@ namespace BorderValley.World.Tests
         private Fixture CreateFixture(
             int capacity = 10,
             bool repeatable = false,
-            bool brokenMultiEnemyQuest = false)
+            bool brokenMultiEnemyQuest = false,
+            int questRequiredCount = 1)
         {
             var item = Track(ScriptableObject.CreateInstance<ItemDefinition>());
             item.EditorConfigure(
@@ -290,7 +310,7 @@ namespace BorderValley.World.Tests
                             "objective.bandit",
                             QuestObjectiveKind.DefeatEnemy,
                             "enemy.bandit",
-                            1,
+                            questRequiredCount,
                             false,
                             "quest.test.objective.bandit"),
                         new QuestObjectiveDefinition(
@@ -314,7 +334,7 @@ namespace BorderValley.World.Tests
                             "objective.bandit",
                             QuestObjectiveKind.DefeatEnemy,
                             "enemy.bandit",
-                            1,
+                            questRequiredCount,
                             false,
                             "quest.test.objective.bandit")
                     },
@@ -382,10 +402,11 @@ namespace BorderValley.World.Tests
         private static BattleResult CreateResult(
             Fixture fixture,
             BattleFlowOutcome outcome,
+            IEnumerable<string> defeatedEnemyIds,
             params BattleUnitResult[] unitStates)
         {
             var states = unitStates.Length == 0
-                ? new[] { new BattleUnitResult("player.warrior", "enemy.bandit", 25, 5) }
+                ? new[] { new BattleUnitResult("player.warrior", "class.warrior", 25, 5) }
                 : unitStates;
             return new BattleResult(
                 outcome,
@@ -397,7 +418,8 @@ namespace BorderValley.World.Tests
                     fixture.Encounter.GoldReward,
                     fixture.Encounter.ExperienceReward,
                     fixture.Encounter.EnemyDefinitionIds,
-                    fixture.Encounter.Repeatable));
+                    fixture.Encounter.Repeatable),
+                defeatedEnemyIds);
         }
 
         private T Track<T>(T value) where T : Object

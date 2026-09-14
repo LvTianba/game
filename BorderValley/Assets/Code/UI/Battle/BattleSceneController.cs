@@ -122,11 +122,19 @@ namespace BorderValley.UI.Battle
                 .Where(unit => unit.Team == Team.Player)
                 .Select(unit => new BattleUnitResult(unit.Id, unit.DefinitionId, unit.Health, unit.Mana))
                 .ToArray();
+            var outcome = MapOutcome(presenter.Outcome);
+            var defeatedEnemyIds = outcome == BattleFlowOutcome.PlayerVictory
+                ? presenter.Engine.State.Units
+                    .Where(unit => unit.Team == Team.Enemy && !unit.IsAlive)
+                    .Select(unit => unit.DefinitionId)
+                    .ToArray()
+                : Array.Empty<string>();
             flow.CompleteBattle(new BattleResult(
-                MapOutcome(presenter.Outcome),
+                outcome,
                 presenter.Engine.State.Round,
                 unitStates,
-                battleContext));
+                battleContext,
+                defeatedEnemyIds));
 
             if (string.IsNullOrWhiteSpace(returnScene) || GameBootstrapper.Context == null)
                 return;

@@ -214,6 +214,7 @@ namespace BorderValley.PlayModeTests
         public void BattleTextKeys_FormatHudValuesAsLocalizationKeys()
         {
             Assert.That(BattleTextKeys.Unit("unit.ranger"), Is.EqualTo("battle.unit.ranger"));
+            Assert.That(BattleTextKeys.Unit("enemy.bandit"), Is.EqualTo("battle.unit.bandit"));
             Assert.That(BattleTextKeys.Flag(false), Is.EqualTo("battle.ui.no"));
             Assert.That(BattleTextKeys.StatusKey(StatusType.Stunned), Is.EqualTo("battle.status.stunned"));
         }
