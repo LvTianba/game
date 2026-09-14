@@ -397,8 +397,9 @@ namespace BorderValley.Narrative.Tests
             var item = CreateItem("item.crit");
             var affix = CreateAffix("affix.crit", AffixEffectKind.FlatStat, CombatStat.CritChanceBps, 1200, 1200);
             var shop = CreateShop("shop.crit", ItemRarity.Fine, item, new[] { affix });
+            var owner = CreateShopOwner(shop);
 
-            var issues = ContentValidator.Validate(new ContentDefinition[] { item, affix, shop }).ToList();
+            var issues = ContentValidator.Validate(new ContentDefinition[] { item, affix, shop, owner }).ToList();
 
             Assert.That(issues, Is.Empty);
         }
@@ -434,8 +435,10 @@ namespace BorderValley.Narrative.Tests
             var second = CreateAffix("affix.second", AffixEffectKind.FlatStat, CombatStat.Armor, 1, 1);
             var special = CreateAffix("affix.special", AffixEffectKind.SkillModifier, CombatStat.Power, 1, 1);
             var shop = CreateShop("shop.epic", ItemRarity.Epic, item, new[] { first, second, special });
+            var owner = CreateShopOwner(shop);
 
-            var issues = ContentValidator.Validate(new ContentDefinition[] { item, first, second, special, shop }).ToList();
+            var issues = ContentValidator.Validate(
+                new ContentDefinition[] { item, first, second, special, shop, owner }).ToList();
 
             Assert.That(issues, Is.Empty);
         }
@@ -624,6 +627,13 @@ namespace BorderValley.Narrative.Tests
                 string.Empty,
                 new[] { new ShopOfferDefinition("offer." + id, item, rarity, 1, affixes) });
             return shop;
+        }
+
+        private NpcDefinition CreateShopOwner(ShopDefinition shop)
+        {
+            var owner = Track(ScriptableObject.CreateInstance<NpcDefinition>());
+            owner.EditorConfigure("npc." + shop.Id, "npc.shop.owner.name", string.Empty, shop.Id, 0);
+            return owner;
         }
 
         private void AssertIssue(string expectedCode, params ContentDefinition[] definitions)

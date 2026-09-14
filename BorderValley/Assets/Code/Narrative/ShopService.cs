@@ -42,14 +42,32 @@ namespace BorderValley.Narrative
                 .Where(affix => !string.IsNullOrWhiteSpace(affix.Id))
                 .GroupBy(affix => affix.Id, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-            shopOwners = all
+            var ownersByShop = all
                 .OfType<NpcDefinition>()
                 .Where(npc => !string.IsNullOrWhiteSpace(npc.Id) && !string.IsNullOrWhiteSpace(npc.OpenShopId))
                 .GroupBy(npc => npc.OpenShopId, StringComparer.Ordinal)
                 .ToDictionary(
                     group => group.Key,
-                    group => group.OrderBy(npc => npc.Id, StringComparer.Ordinal).First(),
+                    group => group.OrderBy(npc => npc.Id, StringComparer.Ordinal).ToArray(),
                     StringComparer.Ordinal);
+            foreach (var shop in shops.Values)
+            {
+                if (!ownersByShop.TryGetValue(shop.Id, out var owners) || owners.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Shop '{shop.Id}' must have exactly one owner; found 0.");
+                }
+
+                if (owners.Length != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Shop '{shop.Id}' must have exactly one owner; found {owners.Length}.");
+                }
+            }
+
+            shopOwners = ownersByShop
+                .Where(pair => shops.ContainsKey(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value[0], StringComparer.Ordinal);
         }
 
         public IReadOnlyList<ShopOfferView> GetOffers(string shopId)

@@ -348,9 +348,29 @@ namespace BorderValley.Data
             var items = ById(all.OfType<ItemDefinition>(), item => item.Id);
             var affixes = ById(all.OfType<AffixDefinition>(), affix => affix.Id);
             var knownEvents = CollectKnownEventIds(definitions);
+            var ownerCounts = all
+                .OfType<NpcDefinition>()
+                .Where(npc => !string.IsNullOrWhiteSpace(npc.OpenShopId))
+                .GroupBy(npc => npc.OpenShopId, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
             foreach (var shop in all.OfType<ShopDefinition>())
             {
+                if (!ownerCounts.TryGetValue(shop.Id, out var ownerCount) || ownerCount == 0)
+                {
+                    yield return Issue(
+                        "missing_shop_owner",
+                        $"Shop '{shop.Id}' has no owner.",
+                        shop);
+                }
+                else if (ownerCount != 1)
+                {
+                    yield return Issue(
+                        "multiple_shop_owners",
+                        $"Shop '{shop.Id}' has {ownerCount} owners; exactly one is required.",
+                        shop);
+                }
+
                 if (!string.IsNullOrWhiteSpace(shop.RequiredEventId) &&
                     !knownEvents.Contains(shop.RequiredEventId))
                 {

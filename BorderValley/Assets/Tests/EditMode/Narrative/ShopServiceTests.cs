@@ -6,6 +6,7 @@ using BorderValley.Data.Items;
 using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
 using BorderValley.Inventory;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -147,6 +148,55 @@ namespace BorderValley.Narrative.Tests
         }
 
         [Test]
+        public void TryBuy_WhenSuccessful_NotifiesSpendBeforeBagAdd()
+        {
+            var fixture = CreateFixture();
+            Assert.That(fixture.State.SetEvent(EventId), Is.True);
+            var observations = new List<string>();
+            fixture.Inventory.Changed += () =>
+                observations.Add($"{fixture.Inventory.Gold}:{fixture.Inventory.Items.Count}");
+
+            Assert.That(fixture.Shop.TryBuy(ShopId, OfferId, out var error), Is.True, error);
+
+            Assert.That(observations, Is.EqualTo(new[] { "80:0", "80:1" }));
+        }
+
+        [Test]
+        public void TryBuy_WhenBagIsFull_NotifiesSpendThenRefund()
+        {
+            var fixture = CreateFixture(capacity: 1);
+            Assert.That(fixture.State.SetEvent(EventId), Is.True);
+            Assert.That(fixture.Inventory.TryAdd(Item("filler.0", FillerId), out var addError), Is.True, addError);
+            var observations = new List<string>();
+            fixture.Inventory.Changed += () =>
+                observations.Add($"{fixture.Inventory.Gold}:{fixture.Inventory.Items.Count}");
+
+            Assert.That(fixture.Shop.TryBuy(ShopId, OfferId, out var error), Is.False);
+
+            Assert.That(error, Is.EqualTo(InventoryTextKeys.BagFull));
+            Assert.That(observations, Is.EqualTo(new[] { "80:1", "100:1" }));
+        }
+
+        [Test]
+        public void TryBuy_WhenCalledTwice_OnlyFirstPurchaseChangesState()
+        {
+            var fixture = CreateFixture();
+            Assert.That(fixture.State.SetEvent(EventId), Is.True);
+            Assert.That(fixture.Shop.TryBuy(ShopId, OfferId, out var firstError), Is.True, firstError);
+            var stateAfterFirstPurchase = fixture.State.Capture();
+            var changesAfterFirstPurchase = 0;
+            fixture.Inventory.Changed += () => changesAfterFirstPurchase++;
+
+            Assert.That(fixture.Shop.TryBuy(ShopId, OfferId, out var secondError), Is.False);
+            Assert.That(secondError, Is.EqualTo(NarrativeTextKeys.UnknownOffer));
+            Assert.That(fixture.Inventory.Gold, Is.EqualTo(80));
+            Assert.That(fixture.Inventory.Items.Count, Is.EqualTo(1));
+            Assert.That(fixture.Shop.GetOffers(ShopId), Is.Empty);
+            Assert.That(changesAfterFirstPurchase, Is.EqualTo(0));
+            Assert.That(JToken.DeepEquals(stateAfterFirstPurchase, fixture.State.Capture()), Is.True);
+        }
+
+        [Test]
         public void TrySell_WithQuestAndEquippedItems_RejectsWithoutMutation()
         {
             var fixture = CreateFixture(startingGold: 0);
@@ -205,25 +255,48 @@ namespace BorderValley.Narrative.Tests
             Assert.That(fixture.Inventory.Gold, Is.EqualTo(100));
         }
 
+        [Test]
+        public void Constructor_WithMultipleShopOwners_ThrowsExplicitError()
+        {
+            var error = Assert.Throws<InvalidOperationException>(() => CreateFixture(ownerCount: 2));
+
+            Assert.That(error.Message, Does.Contain("exactly one owner"));
+        }
+
+        [Test]
+        public void Constructor_WithoutShopOwner_ThrowsExplicitError()
+        {
+            var error = Assert.Throws<InvalidOperationException>(() => CreateFixture(ownerCount: 0));
+
+            Assert.That(error.Message, Does.Contain("exactly one owner"));
+        }
+
         private Fixture CreateFixture(
             int startingGold = 100,
             int capacity = 8,
             int baseValue = 200,
             int favorTier = 0,
+            int ownerCount = 1,
             IEnumerable<ShopOfferDefinition> additionalOffers = null)
         {
             var sword = CreateItem(SwordId, baseValue, false);
             var questItem = CreateItem(QuestItemId, 100, true);
             var filler = CreateItem(FillerId, 10, false);
-            var merchant = Track(ScriptableObject.CreateInstance<NpcDefinition>());
-            merchant.EditorConfigure(MerchantId, "npc.merchant.name", string.Empty, ShopId, favorTier);
+            var owners = new List<NpcDefinition>();
+            for (var index = 0; index < ownerCount; index++)
+            {
+                var owner = Track(ScriptableObject.CreateInstance<NpcDefinition>());
+                var ownerId = index == 0 ? MerchantId : MerchantId + "." + index;
+                owner.EditorConfigure(ownerId, ownerId + ".name", string.Empty, ShopId, favorTier);
+                owners.Add(owner);
+            }
 
             var area = Track(ScriptableObject.CreateInstance<WorldAreaDefinition>());
             area.EditorConfigure(
                 "area.village",
                 new Rect(0f, 0f, 20f, 20f),
                 Array.Empty<Rect>(),
-                new[] { merchant },
+                owners,
                 Array.Empty<WorldEncounterDefinition>(),
                 Array.Empty<WorldInteractableDefinition>(),
                 Array.Empty<ItemDropTableDefinition>(),
@@ -236,7 +309,9 @@ namespace BorderValley.Narrative.Tests
             var shop = Track(ScriptableObject.CreateInstance<ShopDefinition>());
             shop.EditorConfigure(ShopId, "shop.general.name", EventId, offers);
 
-            var definitions = new ContentDefinition[] { sword, questItem, filler, merchant, area, shop };
+            var definitions = new List<ContentDefinition> { sword, questItem, filler, area, shop };
+            definitions.AddRange(owners);
+            var definitionArray = definitions.ToArray();
             var items = new Dictionary<string, ItemDefinition>(StringComparer.Ordinal)
             {
                 [SwordId] = sword,
@@ -244,11 +319,11 @@ namespace BorderValley.Narrative.Tests
                 [FillerId] = filler
             };
             var affixes = new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
-            var state = new NarrativeStateService(definitions);
+            var state = new NarrativeStateService(definitionArray);
             var inventory = new InventoryService(capacity, items, startingGold);
             var economy = new EconomyService(inventory, items, affixes);
-            var shopService = new ShopService(definitions, state, economy);
-            return new Fixture(definitions, items, affixes, state, inventory, economy, shopService);
+            var shopService = new ShopService(definitionArray, state, economy);
+            return new Fixture(definitionArray, items, affixes, state, inventory, economy, shopService);
         }
 
         private ItemDefinition CreateItem(string id, int baseValue, bool isQuestItem)
