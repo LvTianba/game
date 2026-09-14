@@ -21,6 +21,14 @@ namespace BorderValley.Inventory.Tests
             var warrior = snapshot.Members.Single(member => member.ClassId == "class.warrior");
             Assert.That(warrior.Power, Is.GreaterThan(9));
             Assert.That(warrior.SkillModifiers.Single().Kind, Is.EqualTo(SkillModifierKind.Radius));
+            Assert.That(warrior.SkillModifiers.Single().SkillId, Is.EqualTo("skill.whirlwind"));
+        }
+
+        [Test]
+        public void Build_SkillModifierWithoutTarget_FailsLoudly()
+        {
+            var builder = new PartyBattleSnapshotBuilder(Progression(), InventoryWithSwordAndBoots(), Items(), Affixes(targetSkillId: null));
+            Assert.Throws<InvalidOperationException>(() => builder.Build(new BattleRequest("core", "seed", "World")));
         }
 
         [Test]
@@ -153,12 +161,13 @@ namespace BorderValley.Inventory.Tests
                     new[] { new StatValue(CombatStat.Speed, 3) })
             };
 
-        private static IReadOnlyDictionary<string, AffixDefinition> Affixes() =>
+        private static IReadOnlyDictionary<string, AffixDefinition> Affixes(string targetSkillId = "skill.whirlwind") =>
             new Dictionary<string, AffixDefinition>(StringComparer.Ordinal)
             {
                 ["affix.skill.radius"] = Affix(
                     "affix.skill.radius", AffixEffectKind.SkillModifier,
-                    skillModifier: SkillModifierKind.Radius, minValue: 1, maxValue: 1),
+                    skillModifier: SkillModifierKind.Radius, minValue: 1, maxValue: 1,
+                    targetSkillId: targetSkillId),
                 ["affix.flat.power"] = Affix(
                     "affix.flat.power", AffixEffectKind.FlatStat,
                     stat: CombatStat.Power, minValue: 4, maxValue: 4),
@@ -201,13 +210,17 @@ namespace BorderValley.Inventory.Tests
             PassiveEffectKind passive = default,
             int minValue = 0,
             int maxValue = 0,
-            int duration = 0)
+            int duration = 0,
+            string targetSkillId = null)
         {
             var definition = ScriptableObject.CreateInstance<AffixDefinition>();
             definition.EditorConfigure(
                 id, id + ".name", new[] { ItemSlot.Boots }, ItemRarity.Common,
                 effectKind, stat, skillModifier, passive, minValue, maxValue, 1,
                 duration, string.Empty, Array.Empty<string>());
+            if (effectKind == AffixEffectKind.SkillModifier && !string.IsNullOrWhiteSpace(targetSkillId))
+                definition.EditorSetTargetSkillId(targetSkillId);
+
             return definition;
         }
     }

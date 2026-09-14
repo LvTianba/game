@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using BorderValley.Battle.Domain;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
@@ -41,15 +42,19 @@ namespace BorderValley.UI.Battle
                 ? new BattleFlowService()
                 : GameBootstrapper.Context.Get<IBattleFlow>();
 
+            BattlePartySnapshot partySnapshot = null;
             var seed = DebugSeed;
             if (flow.TryTakeRequest(out var request))
             {
                 seed = request.Seed;
                 returnScene = request.ReturnScene;
+                partySnapshot = request.PartySnapshot;
             }
 
             presenter = new BattleUiPresenter(
-                BattleScenarioFactory.CreateCoreScenario(),
+                partySnapshot == null
+                    ? BattleScenarioFactory.CreateCoreScenario()
+                    : BattleScenarioFactory.CreateCoreScenario(partySnapshot),
                 RandomSourceFactory.FromSeed(seed));
 
             var root = new GameObject(
@@ -110,9 +115,14 @@ namespace BorderValley.UI.Battle
                 return;
 
             continueHandled = true;
+            var unitStates = presenter.Engine.State.Units
+                .Where(unit => unit.Team == Team.Player)
+                .Select(unit => new BattleUnitResult(unit.Id, unit.Health, unit.Mana))
+                .ToArray();
             flow.CompleteBattle(new BattleResult(
                 MapOutcome(presenter.Outcome),
-                presenter.Engine.State.Round));
+                presenter.Engine.State.Round,
+                unitStates));
 
             if (string.IsNullOrWhiteSpace(returnScene) || GameBootstrapper.Context == null)
                 return;

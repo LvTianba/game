@@ -15,6 +15,7 @@ namespace BorderValley.Data.Items
         [SerializeField] private AffixEffectKind effectKind;
         [SerializeField] private CombatStat stat;
         [SerializeField] private SkillModifierKind skillModifier;
+        [SerializeField] private string targetSkillId = string.Empty;
         [SerializeField] private PassiveEffectKind passiveEffect;
         [SerializeField] private int minValue;
         [SerializeField] private int maxValue;
@@ -31,6 +32,7 @@ namespace BorderValley.Data.Items
         public AffixEffectKind EffectKind => effectKind;
         public CombatStat Stat => stat;
         public SkillModifierKind SkillModifier => skillModifier;
+        public string TargetSkillId => targetSkillId;
         public PassiveEffectKind PassiveEffect => passiveEffect;
         public int MinValue => minValue;
         public int MaxValue => maxValue;
@@ -117,6 +119,11 @@ namespace BorderValley.Data.Items
                 1,
                 mutuallyExclusiveAffixIds);
             this.budgetCostKey = budgetCostKey ?? string.Empty;
+        }
+
+        public void EditorSetTargetSkillId(string targetSkillId)
+        {
+            this.targetSkillId = targetSkillId ?? string.Empty;
         }
 #endif
     }

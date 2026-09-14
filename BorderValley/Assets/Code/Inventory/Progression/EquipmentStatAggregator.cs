@@ -61,7 +61,9 @@ namespace BorderValley.Inventory
                             percent[affix.Stat] += affixInstance.Value;
                             break;
                         case AffixEffectKind.SkillModifier:
-                            var key = (affix.Id, affix.SkillModifier);
+                            if (string.IsNullOrWhiteSpace(affix.TargetSkillId))
+                                throw new InvalidOperationException("Skill modifier affix " + affix.Id + " must define TargetSkillId.");
+                            var key = (affix.TargetSkillId, affix.SkillModifier);
                             modifiers.TryGetValue(key, out var current);
                             modifiers[key] = current + affixInstance.Value;
                             break;

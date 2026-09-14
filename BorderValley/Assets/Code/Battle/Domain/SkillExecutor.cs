@@ -92,8 +92,13 @@ namespace BorderValley.Battle.Domain
                 {
                     if (!target.IsAlive) continue;
 
-                    if (ExecuteEffect(effect, state, actor, target, random, ref damaged, ref healed))
-                        AddAffected(affected, affectedSet, target);
+                    var changed = ExecuteEffect(effect, state, actor, target, random, ref damaged, ref healed);
+                    if (changed) AddAffected(affected, affectedSet, target);
+                    if (effect.Kind == SkillEffectKind.Damage && changed)
+                    {
+                        BattlePassiveRules.ApplyOnAttack(actor, target);
+                        BattlePassiveRules.ApplyOnKill(actor, target);
+                    }
                 }
             }
 

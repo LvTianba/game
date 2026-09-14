@@ -115,7 +115,9 @@ namespace BorderValley.UI.Battle
         private BattleActionResult TryMoveOrBasicAttack(GridPosition cell)
         {
             var skills = engine.GetOwnedSkills(ActiveUnit.Id);
-            if (skills.TryGetValue(BasicSkillId, out var basicSkill))
+            var basicSkill = skills.Values.FirstOrDefault(skill =>
+                skill.Id == BasicSkillId ||
+                skill.Id.StartsWith(BasicSkillId + "@", StringComparison.Ordinal));
             {
                 var target = SkillTargetValidator.GetValidTargets(
                         engine.State,
