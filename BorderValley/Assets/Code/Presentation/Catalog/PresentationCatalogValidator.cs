@@ -112,14 +112,6 @@ namespace BorderValley.Presentation
                             "Audio cue volume must be between zero and one: " + audio.Id,
                             audio);
                     }
-
-                    if (audio.Channel == AudioChannel.Music && !audio.Loop)
-                    {
-                        yield return new PresentationValidationIssue(
-                            "looping_music_not_loopable",
-                            "Music cue must be looping: " + audio.Id,
-                            audio);
-                    }
                 }
             }
         }

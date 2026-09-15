@@ -21,13 +21,17 @@ namespace BorderValley.Editor.Tools
         private const string CatalogPath = "Assets/Resources/PresentationCatalog.asset";
         private const int PixelsPerUnit = 32;
         private const int SampleRate = 44100;
-
+        private const int BattleIdleStart = 0;
+        private const int BattleMoveStart = 2;
+        private const int BattleAttackStart = 4;
+        private const int BattleHitStart = 6;
+        private const int BattleDownStart = 8;
+        private const int BattleFrameCount = 9;
         private static readonly string[] Directions = { "south", "east", "north", "west" };
         private static readonly string[] NpcNames = { "elder", "merchant", "blacksmith", "innkeeper", "ranger", "mage", "hunter", "survivor" };
         private static readonly string[] GroundNames = { "village", "forest", "watchtower", "crypt" };
         private static readonly string[] MarkerNames = { "chest", "gather", "investigate", "area_exit", "encounter" };
         private static readonly string[] UnitNames = { "warrior", "ranger", "mage", "bandit", "wolf", "skeleton", "boss" };
-        private static readonly string[] UnitStates = { "idle", "move", "attack", "hit", "down" };
 
         private static readonly Color32 Clear = new Color32(0, 0, 0, 0);
         private static readonly Color32 Ink = new Color32(24, 22, 35, 255);
@@ -43,6 +47,15 @@ namespace BorderValley.Editor.Tools
             Hex("3f73b8"), Hex("4e9b62"), Hex("8155b4"), Hex("9b4a3f"),
             Hex("6e665d"), Hex("b8b39d"), Hex("b43f5e")
         };
+
+        private enum BattleFrameState
+        {
+            Idle,
+            Move,
+            Attack,
+            Hit,
+            Down
+        }
 
         private sealed class MusicSpec
         {
@@ -184,7 +197,7 @@ namespace BorderValley.Editor.Tools
             for (var unit = 0; unit < UnitNames.Length; unit++)
             {
                 var unitIndex = unit;
-                WriteSheet(BattleRoot + "/battle_unit_" + UnitNames[unit] + ".png", 576, 64, 9, 64, 64,
+                WriteSheet(BattleRoot + "/battle_unit_" + UnitNames[unit] + ".png", 576, 64, BattleFrameCount, 64, 64,
                     (texture, frame) => DrawBattleUnit(texture, frame * 64, 0, unitIndex, frame));
             }
         }
@@ -440,11 +453,26 @@ namespace BorderValley.Editor.Tools
             DrawRect(texture, x + 13, y + 13, 6, 6, Hex("c94a52"));
         }
 
+        private static BattleFrameState ResolveBattleFrameState(int frame)
+        {
+            if (frame < BattleMoveStart)
+                return BattleFrameState.Idle;
+            if (frame < BattleAttackStart)
+                return BattleFrameState.Move;
+            if (frame < BattleHitStart)
+                return BattleFrameState.Attack;
+            if (frame < BattleDownStart)
+                return BattleFrameState.Hit;
+            if (frame == BattleDownStart)
+                return BattleFrameState.Down;
+            throw new ArgumentOutOfRangeException(nameof(frame), frame, "Invalid battle frame index.");
+        }
+
         private static void DrawBattleUnit(Texture2D texture, int x, int y, int paletteIndex, int frame)
         {
             var color = UnitPalette[paletteIndex];
-            var state = frame / 2;
-            if (frame == 8)
+            var state = ResolveBattleFrameState(frame);
+            if (state == BattleFrameState.Down)
             {
                 DrawRect(texture, x + 10, y + 9, 44, 16, new Color32(0, 0, 0, 70));
                 DrawRect(texture, x + 14, y + 14, 36, 15, color);
@@ -455,9 +483,9 @@ namespace BorderValley.Editor.Tools
             }
 
             var phase = frame % 2;
-            var offsetX = state == 2 && phase == 1 ? 3 : 0;
-            var offsetY = state == 3 ? -3 - phase : 0;
-            var body = state == 3 && phase == 0 ? Lighten(color, 70) : color;
+            var offsetX = state == BattleFrameState.Attack && phase == 1 ? 3 : 0;
+            var offsetY = state == BattleFrameState.Hit ? -3 - phase : 0;
+            var body = state == BattleFrameState.Hit && phase == 0 ? Lighten(color, 70) : color;
             DrawRect(texture, x + 18, y + 7, 28, 4, new Color32(0, 0, 0, 65));
             DrawRect(texture, x + 24 + offsetX, y + 17 + offsetY, 16, 23, body);
             DrawRect(texture, x + 21 + offsetX, y + 34 + offsetY, 22, 7, Lighten(color, 30));
@@ -466,14 +494,11 @@ namespace BorderValley.Editor.Tools
             DrawRect(texture, x + 24 - (phase == 0 ? 2 : 0), y + 10, 6, 8, Ink);
             DrawRect(texture, x + 36 + (phase == 0 ? 2 : 0), y + 10, 6, 8, Ink);
 
-            if (state == 2)
+            if (state == BattleFrameState.Attack)
             {
                 DrawLine(texture, x + 40, y + 31, x + 53 + phase * 3, y + 24 - phase * 2, Hex("d9d2b8"), 4);
                 DrawRect(texture, x + 49 + phase * 3, y + 21 - phase * 2, 4, 8, Hex("8b5a34"));
             }
-
-            if (state == 4)
-                DrawCircle(texture, x + 31, y + 36, 11, new Color32(255, 255, 255, 0), 0, Ink);
         }
 
         private static void GeneratePortraits()
@@ -764,11 +789,11 @@ namespace BorderValley.Editor.Tools
             foreach (var unit in UnitNames)
             {
                 var frames = LoadSheetSprites(BattleRoot + "/battle_unit_" + unit + ".png");
-                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".idle", frames.Skip(0).Take(2).ToArray(), 4f, true, missingSprite));
-                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".move", frames.Skip(2).Take(2).ToArray(), 8f, true, missingSprite));
-                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".attack", frames.Skip(4).Take(2).ToArray(), 10f, true, missingSprite));
-                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".hit", frames.Skip(6).Take(2).ToArray(), 12f, true, missingSprite));
-                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".down", frames.Skip(8).Take(1).ToArray(), 1f, false, missingSprite));
+                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".idle", frames.Skip(BattleIdleStart).Take(2).ToArray(), 4f, true, missingSprite));
+                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".move", frames.Skip(BattleMoveStart).Take(2).ToArray(), 8f, true, missingSprite));
+                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".attack", frames.Skip(BattleAttackStart).Take(2).ToArray(), 10f, true, missingSprite));
+                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".hit", frames.Skip(BattleHitStart).Take(2).ToArray(), 12f, true, missingSprite));
+                visuals.Add(new VisualClipDefinition("battle.unit." + unit + ".down", frames.Skip(BattleDownStart).Take(1).ToArray(), 1f, false, missingSprite));
             }
 
             visuals.Add(StaticClip("ui.panel", LoadSingleSprite(UiRoot + "/ui_panel.png"), missingSprite));

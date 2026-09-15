@@ -1,5 +1,6 @@
 using System.Linq;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace BorderValley.Presentation.Tests
@@ -38,10 +39,10 @@ namespace BorderValley.Presentation.Tests
         }
 
         [Test]
-        public void Validate_NonLoopingMusic_ReturnsLoopingMusicIssue()
+        public void Validate_NonLoopingVictoryMusic_IsAllowed()
         {
             var audio = AudioCueDefinition.CreateForTests(
-                "bgm.menu",
+                "bgm.victory",
                 null,
                 1f,
                 false,
@@ -49,10 +50,41 @@ namespace BorderValley.Presentation.Tests
             var catalog = ScriptableObject.CreateInstance<PresentationCatalog>();
             catalog.EditorSetAudioCues(new[] { audio });
 
-            var issues = PresentationCatalogValidator.Validate(catalog).ToArray();
-
-            Assert.That(issues.Any(value => value.Code == "looping_music_not_loopable"), Is.True);
+            Assert.That(PresentationCatalogValidator.Validate(catalog), Is.Empty);
             Object.DestroyImmediate(catalog);
+        }
+
+        [Test]
+        public void Validate_ShippedCatalog_HasNoValidationIssues()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<PresentationCatalog>(
+                "Assets/Resources/PresentationCatalog.asset");
+
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(PresentationCatalogValidator.Validate(catalog), Is.Empty);
+        }
+
+        [Test]
+        public void ShippedCatalog_VictoryIsOneShotAndBackgroundMusicLoops()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<PresentationCatalog>(
+                "Assets/Resources/PresentationCatalog.asset");
+            Assert.That(catalog, Is.Not.Null);
+            var audio = catalog.AudioCues.ToDictionary(value => value.Id, System.StringComparer.Ordinal);
+
+            Assert.That(audio["bgm.victory"].Loop, Is.False);
+            foreach (var id in new[]
+                     {
+                         "bgm.menu",
+                         "bgm.world.village",
+                         "bgm.world.forest",
+                         "bgm.world.watchtower",
+                         "bgm.world.crypt",
+                         "bgm.battle"
+                     })
+            {
+                Assert.That(audio[id].Loop, Is.True, id);
+            }
         }
 
         [TestCase("")]

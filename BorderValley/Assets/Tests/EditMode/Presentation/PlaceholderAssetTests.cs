@@ -150,11 +150,11 @@ namespace BorderValley.Presentation.Tests
         [Test]
         public void AnimatedSheets_HaveFixedMultipleSpriteSlices()
         {
-            AssertMultipleSheet(WorldRoot + "world_player.png", 16, 32, 48);
+            AssertMultipleSheet(WorldRoot + "world_player.png", "world_player", 16, 32, 48);
             foreach (var unit in UnitNames)
-                AssertMultipleSheet(BattleRoot + "battle_unit_" + unit + ".png", 9, 64, 64);
+                AssertMultipleSheet(BattleRoot + "battle_unit_" + unit + ".png", "battle_unit_" + unit, 9, 64, 64);
             foreach (var npc in NpcNames)
-                AssertMultipleSheet(WorldRoot + "world_npc_" + npc + ".png", 2, 32, 48);
+                AssertMultipleSheet(WorldRoot + "world_npc_" + npc + ".png", "world_npc_" + npc, 2, 32, 48);
         }
 
         [Test]
@@ -226,7 +226,7 @@ namespace BorderValley.Presentation.Tests
                 Assert.That(GetWavLength(path), Is.InRange(0.08f, 0.5f), path);
         }
 
-        private static void AssertMultipleSheet(string path, int expectedCount, int width, int height)
+        private static void AssertMultipleSheet(string path, string expectedNamePrefix, int expectedCount, int width, int height)
         {
             var importer = (TextureImporter)AssetImporter.GetAtPath(path);
             Assert.That(importer, Is.Not.Null, path);
@@ -234,10 +234,11 @@ namespace BorderValley.Presentation.Tests
             Assert.That(ReadSpriteMeshType(importer), Is.EqualTo(SpriteMeshType.FullRect), path);
             Assert.That(importer.spritesheet, Has.Length.EqualTo(expectedCount), path);
 
-            foreach (var metadata in importer.spritesheet)
+            for (var index = 0; index < expectedCount; index++)
             {
-                Assert.That(metadata.rect.width, Is.EqualTo(width), path);
-                Assert.That(metadata.rect.height, Is.EqualTo(height), path);
+                var metadata = importer.spritesheet[index];
+                Assert.That(metadata.name, Is.EqualTo(expectedNamePrefix + "_" + index.ToString("00")), path);
+                Assert.That(metadata.rect, Is.EqualTo(new Rect(index * width, 0, width, height)), path);
             }
 
             var sprites = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Sprite>().ToArray();
