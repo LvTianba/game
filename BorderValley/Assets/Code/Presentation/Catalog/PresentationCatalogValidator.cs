@@ -43,7 +43,14 @@ namespace BorderValley.Presentation
                         continue;
                     }
 
-                    if (!string.IsNullOrWhiteSpace(visual.Id) && !visualIds.Add(visual.Id))
+                    if (string.IsNullOrWhiteSpace(visual.Id))
+                    {
+                        yield return new PresentationValidationIssue(
+                            "invalid_visual_id",
+                            "Visual clip ID must not be blank.",
+                            visual);
+                    }
+                    else if (!visualIds.Add(visual.Id))
                     {
                         yield return new PresentationValidationIssue(
                             "duplicate_visual_id",
@@ -83,7 +90,14 @@ namespace BorderValley.Presentation
                         continue;
                     }
 
-                    if (!string.IsNullOrWhiteSpace(audio.Id) && !audioIds.Add(audio.Id))
+                    if (string.IsNullOrWhiteSpace(audio.Id))
+                    {
+                        yield return new PresentationValidationIssue(
+                            "invalid_audio_id",
+                            "Audio cue ID must not be blank.",
+                            audio);
+                    }
+                    else if (!audioIds.Add(audio.Id))
                     {
                         yield return new PresentationValidationIssue(
                             "duplicate_audio_id",

@@ -25,10 +25,62 @@ namespace BorderValley.Presentation.Tests
         [Test]
         public void Validate_LoopingMusicWithZeroVolume_IsAllowed()
         {
-            var audio = AudioCueDefinition.CreateForTests("bgm.menu", null, 0f, true);
+            var audio = AudioCueDefinition.CreateForTests(
+                "bgm.menu",
+                null,
+                0f,
+                true,
+                AudioChannel.Music);
             var catalog = ScriptableObject.CreateInstance<PresentationCatalog>();
             catalog.EditorSetAudioCues(new[] { audio });
             Assert.That(PresentationCatalogValidator.Validate(catalog), Is.Empty);
+            Object.DestroyImmediate(catalog);
+        }
+
+        [Test]
+        public void Validate_NonLoopingMusic_ReturnsLoopingMusicIssue()
+        {
+            var audio = AudioCueDefinition.CreateForTests(
+                "bgm.menu",
+                null,
+                1f,
+                false,
+                AudioChannel.Music);
+            var catalog = ScriptableObject.CreateInstance<PresentationCatalog>();
+            catalog.EditorSetAudioCues(new[] { audio });
+
+            var issues = PresentationCatalogValidator.Validate(catalog).ToArray();
+
+            Assert.That(issues.Any(value => value.Code == "looping_music_not_loopable"), Is.True);
+            Object.DestroyImmediate(catalog);
+        }
+
+        [TestCase("")]
+        [TestCase("   ")]
+        public void Validate_BlankVisualId_ReturnsInvalidVisualId(string id)
+        {
+            var catalog = ScriptableObject.CreateInstance<PresentationCatalog>();
+            catalog.EditorSetVisualClips(new[] { VisualClipDefinition.CreateForTests(id, null) });
+
+            var issues = PresentationCatalogValidator.Validate(catalog).ToArray();
+
+            Assert.That(issues.Any(value => value.Code == "invalid_visual_id"), Is.True);
+            Object.DestroyImmediate(catalog);
+        }
+
+        [TestCase("")]
+        [TestCase("   ")]
+        public void Validate_BlankAudioId_ReturnsInvalidAudioId(string id)
+        {
+            var catalog = ScriptableObject.CreateInstance<PresentationCatalog>();
+            catalog.EditorSetAudioCues(new[]
+            {
+                AudioCueDefinition.CreateForTests(id, null, 1f, true, AudioChannel.Music)
+            });
+
+            var issues = PresentationCatalogValidator.Validate(catalog).ToArray();
+
+            Assert.That(issues.Any(value => value.Code == "invalid_audio_id"), Is.True);
             Object.DestroyImmediate(catalog);
         }
     }

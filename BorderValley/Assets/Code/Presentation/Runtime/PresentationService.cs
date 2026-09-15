@@ -24,7 +24,7 @@ namespace BorderValley.Presentation
         {
             this.audio = audio;
             IsAvailable = catalog != null;
-            MissingSprite = CreateMissingSprite();
+            var generatedMissingSprite = CreateMissingSprite();
 
             if (catalog != null)
             {
@@ -37,6 +37,14 @@ namespace BorderValley.Presentation
                 Fill(characterVisuals, catalog.CharacterVisuals);
                 Fill(itemIcons, catalog.ItemIcons);
                 Fill(uiSprites, catalog.UiSprites);
+
+                MissingSprite = TryResolveSprite(catalog.MissingSpriteId, out var configuredMissingSprite)
+                    ? configuredMissingSprite
+                    : generatedMissingSprite;
+            }
+            else
+            {
+                MissingSprite = generatedMissingSprite;
             }
 
             missingClip = new VisualClip("ui.missing", new[] { MissingSprite }, 1f, false, MissingSprite);
@@ -56,16 +64,7 @@ namespace BorderValley.Presentation
 
         public Sprite GetSprite(string spriteId)
         {
-            if (string.IsNullOrWhiteSpace(spriteId) || !clips.TryGetValue(spriteId, out var clip))
-                return MissingSprite;
-
-            foreach (var frame in clip.Frames)
-            {
-                if (frame != null)
-                    return frame;
-            }
-
-            return clip.Fallback != null ? clip.Fallback : MissingSprite;
+            return TryResolveSprite(spriteId, out var sprite) ? sprite : MissingSprite;
         }
 
         public AudioCue GetAudioCue(string cueId)
@@ -198,6 +197,30 @@ namespace BorderValley.Presentation
                 return MissingSprite;
 
             return GetSprite(spriteId);
+        }
+
+        private bool TryResolveSprite(string spriteId, out Sprite sprite)
+        {
+            if (!string.IsNullOrWhiteSpace(spriteId) && clips.TryGetValue(spriteId, out var clip))
+            {
+                foreach (var frame in clip.Frames)
+                {
+                    if (frame != null)
+                    {
+                        sprite = frame;
+                        return true;
+                    }
+                }
+
+                if (clip.Fallback != null)
+                {
+                    sprite = clip.Fallback;
+                    return true;
+                }
+            }
+
+            sprite = null;
+            return false;
         }
 
         private bool TryResolveCue(string cueId, out AudioCue cue)
