@@ -12,6 +12,7 @@ namespace BorderValley.UI.World
         public const string UnknownItem = InventoryTextKeys.ItemMissing;
         public const string ServiceUnavailable = "world.ui.error.service_unavailable";
         public const string PendingSettlement = "world.ui.error.pending_settlement";
+        public const string InvalidPosition = "world.ui.error.invalid_position";
 
         public const string DialoguePanelTitle = "world.ui.dialogue.title";
         public const string DialogueSpeakerUnknown = "world.ui.dialogue.speaker.unknown";

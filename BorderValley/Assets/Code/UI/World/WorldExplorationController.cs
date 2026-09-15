@@ -129,7 +129,8 @@ namespace BorderValley.UI.World
             CreateUi();
             var startArea = ResolveStartArea();
             var startPosition = ResolveStartPosition(startArea);
-            EnterArea(startArea, startPosition, false);
+            if (!EnterArea(startArea, startPosition, false))
+                return;
             TrySaveWorld();
             AutosaveAttemptCount = 0;
             initialized = true;
@@ -234,7 +235,11 @@ namespace BorderValley.UI.World
                         currentArea,
                         out var next))
                 {
-                    SetPlayerPosition(next);
+                    if (!SetPlayerPosition(next))
+                    {
+                        LastErrorKey = WorldTextKeys.InvalidPosition;
+                        return;
+                    }
                 }
 
                 remaining -= step;
@@ -357,7 +362,16 @@ namespace BorderValley.UI.World
 
             if (pendingBattleResult != null)
             {
-                ProcessPendingBattleResult();
+                var attemptsBefore = AutosaveAttemptCount;
+                try
+                {
+                    ProcessPendingBattleResult();
+                }
+                finally
+                {
+                    if (AutosaveAttemptCount == attemptsBefore)
+                        TrySaveWorld();
+                }
                 return;
             }
 
@@ -499,20 +513,34 @@ namespace BorderValley.UI.World
             if (!areas.TryGetValue(areaId, out var area))
                 return false;
 
-            EnterArea(area, ClampToArea(area, arrivalPosition), true);
+            if (!EnterArea(area, ClampToArea(area, arrivalPosition), true))
+                return false;
             SuppressArrivalExit(currentArea, PlayerPosition, sourceAreaId);
             RefreshInteractionState();
             return true;
         }
 
-        private void EnterArea(WorldAreaDefinition area, Vector2 position, bool saveAfter)
+        private bool EnterArea(WorldAreaDefinition area, Vector2 position, bool saveAfter)
         {
+            if (area == null)
+            {
+                LastErrorKey = WorldTextKeys.InvalidPosition;
+                return false;
+            }
+
+            var previousArea = currentArea;
             currentArea = area;
-            SetPlayerPosition(ClampToArea(area, position));
+            if (!SetPlayerPosition(ClampToArea(area, position)))
+            {
+                currentArea = previousArea;
+                LastErrorKey = WorldTextKeys.InvalidPosition;
+                return false;
+            }
             MapView.Render(area, narrative);
             FollowCamera();
             if (saveAfter)
                 TrySaveWorld();
+            return true;
         }
 
         private void UpdateExitSuppression()
@@ -658,14 +686,16 @@ namespace BorderValley.UI.World
                 : area.Bounds.center;
         }
 
-        private void SetPlayerPosition(Vector2 position)
+        private bool SetPlayerPosition(Vector2 position)
         {
-            if (Player == null)
-                return;
+            if (Player == null || currentArea == null)
+                return false;
+
+            if (!narrative.SetCurrentLocation(currentArea.Id, position))
+                return false;
 
             Player.transform.position = new Vector3(position.x, position.y, 0f);
-            if (currentArea != null)
-                narrative.SetCurrentLocation(currentArea.Id, PlayerPosition);
+            return true;
         }
 
         private void FollowCamera()

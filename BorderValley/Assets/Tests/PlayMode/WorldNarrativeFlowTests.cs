@@ -1,6 +1,8 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
@@ -21,6 +23,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using Object = UnityEngine.Object;
 
 namespace BorderValley.PlayModeTests
 {
@@ -258,6 +261,7 @@ namespace BorderValley.PlayModeTests
             var progression = context.Get<PartyProgressionService>();
             var quests = context.Get<QuestService>();
             var state = context.Get<NarrativeStateService>();
+            var save = context.Get<SaveService>();
             yield return AcceptMainQuest(controller);
 
             var objectiveId = quests.GetJournal()
@@ -315,6 +319,48 @@ namespace BorderValley.PlayModeTests
             Assert.That(recordingLoader.LoadedScenes.Count, Is.EqualTo(loadsBeforeBlockedEncounter));
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("World"));
             Assert.That(controller.HasPendingSettlement, Is.True);
+
+            var goldBeforePause = inventory.Gold;
+            var itemsBeforePause = inventory.Items.Count;
+            var experienceBeforePause = progression.TotalExperience;
+            var questProgressBeforePause = state.GetObjectiveProgress(MainQuestId, objectiveId);
+            var settlementCountBeforePause = controller.SettlementCount;
+            var attemptsBeforePause = controller.AutosaveAttemptCount;
+
+            yield return MoveNear(controller, new Vector2(6f, 6f));
+            var pausePosition = controller.PlayerPosition;
+            Assert.That(Vector2.Distance(pausePosition, encounter.Position), Is.GreaterThan(0.4f));
+
+            controller.HandleApplicationPause(true);
+
+            Assert.That(controller.AutosaveAttemptCount, Is.EqualTo(attemptsBeforePause + 1));
+            Assert.That(controller.HasPendingSettlement, Is.True);
+            Assert.That(controller.SettlementCount, Is.EqualTo(settlementCountBeforePause));
+            Assert.That(inventory.Gold, Is.EqualTo(goldBeforePause));
+            Assert.That(inventory.Items.Count, Is.EqualTo(itemsBeforePause));
+            Assert.That(progression.TotalExperience, Is.EqualTo(experienceBeforePause));
+            Assert.That(
+                state.GetObjectiveProgress(MainQuestId, objectiveId),
+                Is.EqualTo(questProgressBeforePause));
+            Assert.That(state.GetCurrentAreaId(), Is.EqualTo(controller.CurrentAreaId));
+            Assert.That(
+                Vector2.Distance(state.GetCurrentPosition(), controller.PlayerPosition),
+                Is.LessThan(0.0001f));
+
+            Assert.That(state.SetCurrentLocation(VillageId, Vector2.zero), Is.True);
+            Assert.That(save.Load(0), Is.True);
+            Assert.That(state.GetCurrentAreaId(), Is.EqualTo(ForestId));
+            Assert.That(Vector2.Distance(state.GetCurrentPosition(), pausePosition), Is.LessThan(0.0001f));
+            Assert.That(controller.HasPendingSettlement, Is.True);
+            Assert.That(controller.SettlementCount, Is.EqualTo(settlementCountBeforePause));
+            Assert.That(inventory.Gold, Is.EqualTo(goldBeforePause));
+            Assert.That(inventory.Items.Count, Is.EqualTo(itemsBeforePause));
+            Assert.That(progression.TotalExperience, Is.EqualTo(experienceBeforePause));
+            Assert.That(
+                state.GetObjectiveProgress(MainQuestId, objectiveId),
+                Is.EqualTo(questProgressBeforePause));
+
+            yield return MoveNear(controller, encounter.Position);
 
             var itemToRelease = inventory.Items.First();
             Assert.That(inventory.TryRemove(itemToRelease.InstanceId), Is.True);
@@ -457,6 +503,46 @@ namespace BorderValley.PlayModeTests
             Assert.That(Vector2.Distance(controller.PlayerPosition, movedPosition), Is.LessThan(0.0001f));
         }
 
+        [UnityTest]
+        public IEnumerator Movement_WhenNarrativeLocationCommitFails_LeavesTransformAndStateUnchanged()
+        {
+            yield return LoadWorld();
+            var controller = GetController();
+            var state = GameBootstrapper.Context.Get<NarrativeStateService>();
+            var invalidArea = ScriptableObject.CreateInstance<WorldAreaDefinition>();
+            invalidArea.EditorConfigure(
+                "area.invalid",
+                new Rect(0f, 0f, 10f, 10f),
+                Array.Empty<Rect>(),
+                Array.Empty<NpcDefinition>(),
+                Array.Empty<WorldEncounterDefinition>(),
+                Array.Empty<WorldInteractableDefinition>(),
+                Array.Empty<ItemDropTableDefinition>());
+            SetPrivateField(controller, "currentArea", invalidArea);
+
+            try
+            {
+                var areaBefore = state.GetCurrentAreaId();
+                var positionBefore = controller.PlayerPosition;
+                var narrativePositionBefore = state.GetCurrentPosition();
+
+                PressJoystick(controller, Vector2.right);
+                yield return null;
+                yield return null;
+                ReleaseJoystick(controller);
+                yield return null;
+
+                Assert.That(controller.PlayerPosition, Is.EqualTo(positionBefore));
+                Assert.That(state.GetCurrentAreaId(), Is.EqualTo(areaBefore));
+                Assert.That(state.GetCurrentPosition(), Is.EqualTo(narrativePositionBefore));
+                Assert.That(controller.LastErrorKey, Is.EqualTo("world.ui.error.invalid_position"));
+            }
+            finally
+            {
+                Object.Destroy(invalidArea);
+            }
+        }
+
         private static IEnumerator LoadWorld()
         {
             yield return SceneManager.LoadSceneAsync("Boot");
@@ -526,6 +612,13 @@ namespace BorderValley.PlayModeTests
             var controller = Object.FindAnyObjectByType<WorldExplorationController>();
             Assert.That(controller, Is.Not.Null);
             return controller;
+        }
+
+        private static void SetPrivateField(object target, string fieldName, object value)
+        {
+            var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, "Missing field: " + fieldName);
+            field.SetValue(target, value);
         }
 
         private static WorldInteractableDefinition FindNpcInteractable(string areaId, string npcId) =>
