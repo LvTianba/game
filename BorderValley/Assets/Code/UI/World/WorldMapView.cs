@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BorderValley.Data.World;
+using BorderValley.Narrative;
 using UnityEngine;
 
 namespace BorderValley.UI.World
@@ -15,7 +16,9 @@ namespace BorderValley.UI.World
         public int ObstacleCount { get; private set; }
         public int EncounterMarkerCount { get; private set; }
 
-        public void Render(WorldAreaDefinition area)
+        public void Render(WorldAreaDefinition area) => Render(area, null);
+
+        public void Render(WorldAreaDefinition area, NarrativeStateService state)
         {
             Clear();
             if (area == null)
@@ -54,7 +57,7 @@ namespace BorderValley.UI.World
 
             foreach (var encounter in area.Encounters)
             {
-                if (encounter == null)
+                if (!ShouldRenderEncounter(encounter, state))
                     continue;
                 CreateBox(
                     "Encounter_" + encounter.EncounterId,
@@ -123,6 +126,17 @@ namespace BorderValley.UI.World
             }
         }
 
+        private static bool ShouldRenderEncounter(
+            WorldEncounterDefinition encounter,
+            NarrativeStateService state)
+        {
+            if (encounter == null)
+                return false;
+            return encounter.Repeatable ||
+                   string.IsNullOrWhiteSpace(encounter.CompletionEventId) ||
+                   state == null ||
+                   !state.HasEvent(encounter.CompletionEventId);
+        }
         private static float MarkerSize(WorldInteractableKind kind) => kind switch
         {
             WorldInteractableKind.Npc => 0.8f,

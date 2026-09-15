@@ -55,7 +55,7 @@ namespace BorderValley.PlayModeTests
             var controller = Object.FindAnyObjectByType<WorldExplorationController>();
             Assert.That(controller, Is.Not.Null);
             Assert.That(controller.LastBattleResultKey, Is.EqualTo("battle.result.player_victory"));
-            Assert.That(controller.SettlementCountForTests, Is.EqualTo(1));
+            Assert.That(controller.SettlementCount, Is.EqualTo(1));
 
             yield return SceneManager.LoadSceneAsync("World");
             yield return null;

@@ -69,8 +69,8 @@ namespace BorderValley.PlayModeTests
             var entry = Object.FindAnyObjectByType<WorldExplorationController>();
             Assert.That(entry, Is.Not.Null);
             Assert.That(entry.LastBattleResultKey, Is.EqualTo("battle.result.player_victory"));
-            Assert.That(entry.HasPendingRewardForTests, Is.False);
-            Assert.That(entry.SettlementCountForTests, Is.EqualTo(1));
+            Assert.That(entry.HasPendingSettlement, Is.False);
+            Assert.That(entry.SettlementCount, Is.EqualTo(1));
             Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
             Assert.That(inventory.Items.Count, Is.GreaterThan(beforeItems));
             Assert.That(
@@ -117,10 +117,10 @@ namespace BorderValley.PlayModeTests
 
                 pendingEntry = Object.FindAnyObjectByType<WorldExplorationController>();
                 Assert.That(pendingEntry, Is.Not.Null);
-                Assert.That(pendingEntry.HasPendingRewardForTests, Is.True);
+                Assert.That(pendingEntry.HasPendingSettlement, Is.True);
                 Assert.That(pendingEntry.LastErrorKey, Is.EqualTo(InventoryTextKeys.AutoSaveFailed));
-                Assert.That(pendingEntry.SettlementCountForTests, Is.EqualTo(1));
-                Assert.That(pendingEntry.SaveAttemptCountForTests, Is.EqualTo(1));
+                Assert.That(pendingEntry.SettlementCount, Is.EqualTo(1));
+                Assert.That(pendingEntry.AutosaveAttemptCount, Is.EqualTo(1));
                 Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
                 Assert.That(
                     fixture.State.GetObjectiveProgress(fixture.Quest.Id, fixture.ObjectiveId),
@@ -131,10 +131,10 @@ namespace BorderValley.PlayModeTests
                 settledExperience = progression.TotalExperience;
             }
 
-            Assert.That(pendingEntry.ConsumePendingResultForTests(), Is.True);
-            Assert.That(pendingEntry.HasPendingRewardForTests, Is.False);
-            Assert.That(pendingEntry.SettlementCountForTests, Is.EqualTo(1));
-            Assert.That(pendingEntry.SaveAttemptCountForTests, Is.EqualTo(2));
+            Assert.That(pendingEntry.ProcessPendingBattleResult(), Is.True);
+            Assert.That(pendingEntry.HasPendingSettlement, Is.False);
+            Assert.That(pendingEntry.SettlementCount, Is.EqualTo(1));
+            Assert.That(pendingEntry.AutosaveAttemptCount, Is.EqualTo(2));
             Assert.That(inventory.Gold, Is.EqualTo(settledGold));
             Assert.That(inventory.Items.Count, Is.EqualTo(settledItems));
             Assert.That(progression.TotalExperience, Is.EqualTo(settledExperience));

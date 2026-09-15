@@ -132,6 +132,52 @@ namespace BorderValley.World.Tests
             Assert.That(result.SourceId, Is.EqualTo("area.village"));
         }
 
+        [Test]
+        public void FindNearest_WhenNonRepeatableEncounterCompleted_IsInvisible()
+        {
+            var encounter = ScriptableObject.CreateInstance<WorldEncounterDefinition>();
+            created.Add(encounter);
+            encounter.EditorConfigure(
+                "encounter.boss",
+                "core",
+                new[] { "enemy.mage" },
+                string.Empty,
+                10,
+                10,
+                Vector2.zero,
+                1.5f,
+                false,
+                string.Empty,
+                "event.boss.defeated");
+            var interactable = Interactable(
+                "interaction.boss",
+                WorldInteractableKind.Encounter,
+                Vector2.zero,
+                1.5f,
+                targetId: encounter.EncounterId);
+            var area = CreateArea("area.crypt", interactable);
+            area.EditorConfigure(
+                area.Id,
+                area.Bounds,
+                area.Obstacles,
+                area.Npcs,
+                new[] { encounter },
+                area.Interactables,
+                area.RewardTables,
+                new[] { encounter.CompletionEventId },
+                area.RewardTableIds);
+            var state = CreateState(area, encounter.CompletionEventId);
+            Assert.That(state.SetEvent(encounter.CompletionEventId), Is.True);
+
+            var found = WorldInteractionResolver.FindNearest(
+                Vector2.zero,
+                area,
+                state,
+                out var result);
+
+            Assert.That(found, Is.False);
+            Assert.That(result, Is.Null);
+        }
         private WorldInteractableDefinition Interactable(
             string id,
             WorldInteractableKind kind,

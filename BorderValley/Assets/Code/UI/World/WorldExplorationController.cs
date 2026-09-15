@@ -48,13 +48,17 @@ namespace BorderValley.UI.World
         private Camera worldCamera;
         private bool initialized;
         private bool battleStarted;
-        private bool pendingAutosave;
+        private BattleResult pendingBattleResult;
+        private WorldBattleSettlementResult pendingSettlement;
+        private readonly HashSet<string> suppressedExitIds = new(StringComparer.Ordinal);
+        private QuestLogPanelView questLogView;
         private string pendingBattleResultKey = string.Empty;
 
         public GameObject Player { get; private set; }
         public VirtualJoystick Joystick { get; private set; }
         public WorldMapView MapView { get; private set; }
         public Button InteractButton { get; private set; }
+        public Button QuestLogButton { get; private set; }
         public DialogueUiPresenter DialoguePresenter { get; private set; }
         public ShopUiPresenter ShopPresenter { get; private set; }
         public QuestLogPresenter QuestLogPresenter { get; private set; }
@@ -63,9 +67,9 @@ namespace BorderValley.UI.World
         public string LastInteractionId { get; private set; } = string.Empty;
         public string LastErrorKey { get; private set; } = string.Empty;
         public string LastBattleResultKey => pendingBattleResultKey;
-        public bool HasPendingRewardForTests => pendingAutosave;
-        public int SaveAttemptCountForTests { get; private set; }
-        public int SettlementCountForTests { get; private set; }
+        public bool HasPendingSettlement => pendingBattleResult != null || pendingSettlement != null;
+        public int AutosaveAttemptCount { get; private set; }
+        public int SettlementCount { get; private set; }
 
         private void Start() => Initialize();
 
@@ -126,9 +130,9 @@ namespace BorderValley.UI.World
             var startPosition = ResolveStartPosition(startArea);
             EnterArea(startArea, startPosition, false);
             TrySaveWorld();
-            SaveAttemptCountForTests = 0;
+            AutosaveAttemptCount = 0;
             initialized = true;
-            ConsumePendingResultForTests();
+            ProcessPendingBattleResult();
             RefreshInteractionState();
         }
 
@@ -183,37 +187,37 @@ namespace BorderValley.UI.World
                 () => Interact());
             InteractButton.interactable = false;
 
-            CreateButton(
+            QuestLogButton = CreateButton(
                 canvas.transform,
                 "QuestLog",
                 "world.ui.quest_log.open",
                 new Vector2(-170f, -170f),
                 new Vector2(240f, 80f),
-                () => QuestLogPresenter.Open());
+                OpenQuestLog);
 
             var dialogueView = CreatePanel<DialoguePanelView>(canvas.transform, "DialoguePanel");
             var shopView = CreatePanel<ShopPanelView>(canvas.transform, "ShopPanel");
-            var questView = CreatePanel<QuestLogPanelView>(canvas.transform, "QuestLogPanel");
+            questLogView = CreatePanel<QuestLogPanelView>(canvas.transform, "QuestLogPanel");
             DialoguePresenter = new DialogueUiPresenter(dialogueService, dialogueView);
             ShopPresenter = new ShopUiPresenter(shopService, inventory, economy, narrative, shopView);
-            QuestLogPresenter = new QuestLogPresenter(quests, questView);
+            QuestLogPresenter = new QuestLogPresenter(quests, questLogView);
             dialogueView.ChoiceSelected += OnDialogueChoiceSelected;
             dialogueView.CloseRequested += OnDialogueClosed;
-            shopView.BuyRequested += OnShopBuyRequested;
+            ShopPresenter.BuySucceeded += OnShopBuySucceeded;
+            ShopPresenter.SellSucceeded += OnShopSellSucceeded;
             shopView.CloseRequested += OnShopClosed;
+            questLogView.CloseRequested += OnQuestLogClosed;
         }
 
 
-
-        public void StepForTests(float deltaTime)
-        {
-            if (initialized)
-                Tick(deltaTime);
-        }
 
         public void Tick(float deltaTime)
         {
-            if (!initialized || battleStarted || IsUiOpen)
+            if (!initialized)
+                return;
+
+            RefreshInteractionState();
+            if (battleStarted || IsUiOpen)
                 return;
 
             var remaining = Mathf.Clamp(deltaTime, 0f, 0.25f);
@@ -250,7 +254,7 @@ namespace BorderValley.UI.World
                     quests.RecordTalk(nearestInteraction.TargetId, out _);
                     return OpenDialogue(nearestInteraction.TargetId);
                 case WorldInteractableKind.AreaExit:
-                    return SwitchArea(nearestInteraction.TargetId, nearestInteraction.ArrivalPosition);
+                    return SwitchArea(nearestInteraction.TargetId, nearestInteraction.ArrivalPosition, nearestInteraction.SourceId);
                 case WorldInteractableKind.Chest:
                 case WorldInteractableKind.Gather:
                     return GrantInteractable(nearestInteraction);
@@ -272,6 +276,7 @@ namespace BorderValley.UI.World
             var shopId = DialoguePresenter.ConsumeOpenedShopId();
             if (!string.IsNullOrWhiteSpace(shopId))
                 return OpenShop(shopId);
+            RefreshInteractionState();
             return true;
         }
 
@@ -288,16 +293,6 @@ namespace BorderValley.UI.World
             return true;
         }
 
-        public bool BuyFromOpenShop(string offerId)
-        {
-            if (!initialized || !ShopPresenter.Buy(offerId))
-            {
-                LastErrorKey = ShopPresenter.LastErrorKey;
-                return false;
-            }
-
-            return TrySaveWorld();
-        }
 
         public bool BeginEncounter(WorldEncounterDefinition encounter)
         {
@@ -315,7 +310,7 @@ namespace BorderValley.UI.World
             var request = WorldEncounterService.BuildRequest(
                 encounter,
                 snapshotBuilder.BuildPartySnapshot(),
-                "world:" + encounter.EncounterId + ":" + SettlementCountForTests,
+                "world:" + encounter.EncounterId + ":" + SettlementCount,
                 "World");
             flow.BeginBattle(request);
             battleStarted = true;
@@ -324,19 +319,52 @@ namespace BorderValley.UI.World
             return true;
         }
 
-        public bool ConsumePendingResultForTests()
+        public bool ProcessPendingBattleResult()
         {
-            if (pendingAutosave)
+            if (!initialized)
+                return false;
+            if (pendingSettlement != null)
                 return RetryPendingAutosave();
-            if (!initialized || !flow.TryTakeResult(out var result))
+            if (pendingBattleResult == null && !flow.TryTakeResult(out pendingBattleResult))
                 return false;
 
-            pendingBattleResultKey = result.Outcome switch
+            return SettlePendingBattleResult();
+        }
+
+        public void HandleApplicationPause(bool pauseStatus)
+        {
+            if (!pauseStatus || !initialized)
+                return;
+
+            if (pendingBattleResult != null)
             {
-                BattleFlowOutcome.PlayerVictory => "battle.result.player_victory",
-                BattleFlowOutcome.EnemyVictory => "battle.result.enemy_victory",
-                _ => "battle.result.in_progress"
-            };
+                ProcessPendingBattleResult();
+                return;
+            }
+
+            if (pendingSettlement != null)
+                RetryPendingAutosave();
+            else
+                TrySaveWorld();
+        }
+
+        public bool RetryPendingAutosave()
+        {
+            if (pendingSettlement == null)
+                return pendingBattleResult == null;
+            if (!TrySaveWorld())
+                return false;
+
+            pendingSettlement = null;
+            RefreshMap();
+            return true;
+        }
+
+        private bool SettlePendingBattleResult()
+        {
+            var result = pendingBattleResult;
+            if (result == null)
+                return false;
 
             WorldEncounterDefinition encounter = null;
             if (result.Context != null)
@@ -350,7 +378,7 @@ namespace BorderValley.UI.World
                 narrative,
                 ResolveRewardTable,
                 RandomSourceFactory.FromSeed(
-                    "world-settlement:" + (encounter?.EncounterId ?? "legacy") + ":" + SettlementCountForTests),
+                    "world-settlement:" + (encounter?.EncounterId ?? "legacy") + ":" + SettlementCount),
                 context.Get<ItemDropTableDefinition>());
             if (!settlementService.Settle(result, encounter, out var settlement))
             {
@@ -358,37 +386,28 @@ namespace BorderValley.UI.World
                 return false;
             }
 
-            SettlementCountForTests++;
-            pendingAutosave = settlement.RequiresAutosave;
-            return !pendingAutosave || RetryPendingAutosave();
-        }
-
-        public void HandleApplicationPause(bool pauseStatus)
-        {
-            if (!pauseStatus || !initialized)
-                return;
-
-            if (pendingAutosave)
-                RetryPendingAutosave();
-            else
-                TrySaveWorld();
-        }
-
-        public bool RetryPendingAutosave()
-        {
-            if (!pendingAutosave)
+            pendingBattleResult = null;
+            pendingBattleResultKey = result.Outcome switch
+            {
+                BattleFlowOutcome.PlayerVictory => "battle.result.player_victory",
+                BattleFlowOutcome.EnemyVictory => "battle.result.enemy_victory",
+                _ => "battle.result.in_progress"
+            };
+            SettlementCount++;
+            RefreshMap();
+            if (!settlement.RequiresAutosave)
                 return true;
-            if (!TrySaveWorld())
-                return false;
 
-            pendingAutosave = false;
-            return true;
+            pendingSettlement = settlement;
+            return RetryPendingAutosave();
         }
 
         private bool RefreshInteractionState()
         {
             if (InteractButton == null)
                 return false;
+
+            UpdateExitSuppression();
             if (IsUiOpen || battleStarted)
             {
                 nearestInteraction = null;
@@ -400,7 +419,8 @@ namespace BorderValley.UI.World
                 PlayerPosition,
                 currentArea,
                 narrative,
-                out nearestInteraction);
+                out nearestInteraction,
+                suppressedExitIds);
             InteractButton.interactable = found;
             return found;
         }
@@ -430,22 +450,28 @@ namespace BorderValley.UI.World
             RefreshInteractionState();
         }
 
-        private void OnShopBuyRequested(string offerId)
-        {
-            if (ShopPresenter == null || string.IsNullOrWhiteSpace(ShopPresenter.CurrentShopId))
-                return;
-            if (!shopService.GetOffers(ShopPresenter.CurrentShopId).Any(value => value.OfferId == offerId))
-                TrySaveWorld();
-        }
+        private void OnShopBuySucceeded(string offerId) => TrySaveWorld();
+
+        private void OnShopSellSucceeded(string instanceId) => TrySaveWorld();
 
         private void OnShopClosed() => RefreshInteractionState();
 
-        private bool SwitchArea(string areaId, Vector2 arrivalPosition)
+        private void OpenQuestLog()
+        {
+            QuestLogPresenter.Open();
+            RefreshInteractionState();
+        }
+
+        private void OnQuestLogClosed() => RefreshInteractionState();
+
+        private bool SwitchArea(string areaId, Vector2 arrivalPosition, string sourceAreaId)
         {
             if (!areas.TryGetValue(areaId, out var area))
                 return false;
 
             EnterArea(area, ClampToArea(area, arrivalPosition), true);
+            SuppressArrivalExit(currentArea, PlayerPosition, sourceAreaId);
+            RefreshInteractionState();
             return true;
         }
 
@@ -454,10 +480,51 @@ namespace BorderValley.UI.World
             currentArea = area;
             SetPlayerPosition(ClampToArea(area, position));
             narrative.SetCurrentLocation(area.Id, PlayerPosition);
-            MapView.Render(area);
+            MapView.Render(area, narrative);
             FollowCamera();
             if (saveAfter)
                 TrySaveWorld();
+        }
+
+        private void UpdateExitSuppression()
+        {
+            if (suppressedExitIds.Count == 0 || currentArea == null)
+                return;
+
+            foreach (var interactable in currentArea.Interactables)
+            {
+                if (!suppressedExitIds.Contains(interactable.Id))
+                    continue;
+                if (Vector2.Distance(PlayerPosition, interactable.Position) <= interactable.Radius)
+                    continue;
+                suppressedExitIds.Remove(interactable.Id);
+            }
+        }
+
+        private void SuppressArrivalExit(WorldAreaDefinition area, Vector2 arrival, string sourceAreaId)
+        {
+            suppressedExitIds.Clear();
+            if (area == null || string.IsNullOrWhiteSpace(sourceAreaId))
+                return;
+
+            foreach (var interactable in area.Interactables)
+            {
+                if (interactable == null ||
+                    interactable.Kind != WorldInteractableKind.AreaExit ||
+                    !string.Equals(interactable.TargetId, sourceAreaId, StringComparison.Ordinal) ||
+                    Vector2.Distance(arrival, interactable.Position) > interactable.Radius)
+                {
+                    continue;
+                }
+
+                suppressedExitIds.Add(interactable.Id);
+            }
+        }
+
+        private void RefreshMap()
+        {
+            if (currentArea != null)
+                MapView.Render(currentArea, narrative);
         }
 
         private bool GrantInteractable(WorldInteractionResult interaction)
@@ -581,7 +648,7 @@ namespace BorderValley.UI.World
         {
             if (save == null)
                 return false;
-            SaveAttemptCountForTests++;
+            AutosaveAttemptCount++;
             try
             {
                 save.Save(0, "World");

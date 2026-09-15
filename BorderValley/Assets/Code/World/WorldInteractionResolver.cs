@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using BorderValley.Data.World;
 using BorderValley.Narrative;
 using UnityEngine;
@@ -11,7 +13,8 @@ namespace BorderValley.World
             Vector2 position,
             WorldAreaDefinition area,
             NarrativeStateService state,
-            out WorldInteractionResult result)
+            out WorldInteractionResult result,
+            ISet<string> suppressedInteractableIds = null)
         {
             result = null;
             if (area == null || state == null || !IsFinite(position)) return false;
@@ -23,7 +26,7 @@ namespace BorderValley.World
 
             foreach (var interactable in interactables)
             {
-                if (!IsEligible(interactable, state)) continue;
+                if (!IsEligible(interactable, area, state, suppressedInteractableIds)) continue;
 
                 var offset = interactable.Position - position;
                 var distance = offset.sqrMagnitude;
@@ -50,10 +53,13 @@ namespace BorderValley.World
 
         private static bool IsEligible(
             WorldInteractableDefinition interactable,
-            NarrativeStateService state)
+            WorldAreaDefinition area,
+            NarrativeStateService state,
+            ISet<string> suppressedInteractableIds)
         {
             if (interactable == null ||
                 string.IsNullOrWhiteSpace(interactable.Id) ||
+                suppressedInteractableIds != null && suppressedInteractableIds.Contains(interactable.Id) ||
                 !IsFinite(interactable.Position) ||
                 !IsFinite(interactable.Radius) ||
                 interactable.Radius < 0f)
@@ -62,6 +68,18 @@ namespace BorderValley.World
             if (!string.IsNullOrWhiteSpace(interactable.RequiredEventId) &&
                 !state.HasEvent(interactable.RequiredEventId))
                 return false;
+
+            if (interactable.Kind == WorldInteractableKind.Encounter)
+            {
+                var encounter = area.Encounters.FirstOrDefault(value =>
+                    value != null &&
+                    string.Equals(value.EncounterId, interactable.TargetId, StringComparison.Ordinal));
+                if (encounter != null &&
+                    !encounter.Repeatable &&
+                    !string.IsNullOrWhiteSpace(encounter.CompletionEventId) &&
+                    state.HasEvent(encounter.CompletionEventId))
+                    return false;
+            }
 
             return !IsResolvable(interactable.Kind) ||
                    !state.IsInteractableResolved(interactable.Id);

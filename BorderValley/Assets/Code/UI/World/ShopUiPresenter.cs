@@ -32,6 +32,8 @@ namespace BorderValley.UI.World
             this.view.CloseRequested += Close;
         }
 
+        public event Action<string> BuySucceeded;
+        public event Action<string> SellSucceeded;
         public bool IsOpen { get; private set; }
         public string CurrentShopId => currentShopId;
         public string LastErrorKey { get; private set; } = string.Empty;
@@ -61,6 +63,7 @@ namespace BorderValley.UI.World
 
             LastErrorKey = string.Empty;
             Refresh();
+            BuySucceeded?.Invoke(offerId);
             return true;
         }
 
@@ -73,6 +76,7 @@ namespace BorderValley.UI.World
 
             LastErrorKey = string.Empty;
             Refresh();
+            SellSucceeded?.Invoke(instanceId);
             return true;
         }
 
