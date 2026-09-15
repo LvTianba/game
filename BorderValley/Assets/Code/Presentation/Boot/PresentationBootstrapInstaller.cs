@@ -1,20 +1,32 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BorderValley.Core;
 using BorderValley.Core.Boot;
 using BorderValley.Core.Persistence;
 using UnityEngine;
 
+[assembly: InternalsVisibleTo("BorderValley.EditModeTests")]
+
 namespace BorderValley.Presentation
 {
     public sealed class PresentationBootstrapInstaller : MonoBehaviour, IGameServiceInstaller
     {
+        private AudioDirector audioDirector;
+
         public void Install(GameContext context, ICollection<ISaveParticipant> participants)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             if (participants == null) throw new ArgumentNullException(nameof(participants));
 
-            var catalog = Resources.Load<PresentationCatalog>("PresentationCatalog");
+            Install(context, Resources.Load<PresentationCatalog>("PresentationCatalog"));
+        }
+
+        internal void Install(GameContext context, PresentationCatalog catalog)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+
+            audioDirector = null;
             if (catalog == null)
             {
                 Debug.LogWarning("PresentationCatalog is missing. Presentation services run in no-op mode.");
@@ -34,9 +46,14 @@ namespace BorderValley.Presentation
             }
 
             output.Initialize();
-            var director = new AudioDirector(output);
-            var service = new PresentationService(catalog, director);
+            audioDirector = new AudioDirector(output);
+            var service = new PresentationService(catalog, audioDirector);
             context.Register<IPresentationService>(service);
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            audioDirector?.SetPaused(paused);
         }
     }
 }

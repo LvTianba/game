@@ -131,6 +131,67 @@ namespace BorderValley.Presentation.Tests
         }
 
         [Test]
+        public void Play_RepeatedCueWithinGuard_IgnoresSecondClip()
+        {
+            var root = new GameObject("audio-output");
+            var first = AudioClip.Create("first", 16, 1, 44100, false);
+            var second = AudioClip.Create("second", 16, 1, 44100, false);
+            try
+            {
+                var output = root.AddComponent<UnityAudioOutput>();
+                output.Initialize();
+
+                output.Play(new AudioCue("sfx.ui.click", first, 1f, false, AudioChannel.Ui));
+                output.Play(new AudioCue("sfx.ui.click", second, 1f, false, AudioChannel.Ui));
+
+                var source = root.GetComponentsInChildren<AudioSource>(true)
+                    .Single(candidate => candidate.gameObject.name == "Ui Audio 1");
+                Assert.That(source.clip, Is.SameAs(first));
+            }
+            finally
+            {
+                AudioListener.pause = false;
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void Play_SeventhUiCue_WhenAllSourcesBusy_DropsNewCue()
+        {
+            var root = new GameObject("audio-output");
+            var clips = Enumerable.Range(0, 7)
+                .Select(index => AudioClip.Create("clip-" + index, 44100, 1, 44100, false))
+                .ToArray();
+            try
+            {
+                var output = root.AddComponent<UnityAudioOutput>();
+                output.Initialize();
+
+                for (var index = 0; index < 6; index++)
+                {
+                    output.Play(new AudioCue("sfx.ui." + index, clips[index], 1f, false, AudioChannel.Ui));
+                }
+
+                output.Play(new AudioCue("sfx.ui.dropped", clips[6], 1f, false, AudioChannel.Ui));
+
+                var uiSources = root.GetComponentsInChildren<AudioSource>(true)
+                    .Where(source => source.gameObject.name.StartsWith("Ui Audio"))
+                    .ToArray();
+                Assert.That(uiSources.All(source => source.isPlaying), Is.True);
+                Assert.That(uiSources.Any(source => ReferenceEquals(source.clip, clips[6])), Is.False);
+            }
+            finally
+            {
+                AudioListener.pause = false;
+                foreach (var clip in clips)
+                    Object.DestroyImmediate(clip);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void StopMusic_StopsLoopingAndVictorySources()
         {
             var root = new GameObject("audio-output");
