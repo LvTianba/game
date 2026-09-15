@@ -99,6 +99,14 @@ namespace BorderValley.Presentation.Tests
             Assert.Throws<InvalidOperationException>(() => animator.Play(clip));
         }
 
+        [Test]
+        public void SpriteAnimator_DisallowsMultipleComponents()
+        {
+            Assert.That(
+                Attribute.IsDefined(typeof(SpriteAnimator), typeof(DisallowMultipleComponent)),
+                Is.True);
+        }
+
         private SpriteAnimator CreateAnimator(out Sprite first, out Sprite second)
         {
             var texture = new Texture2D(4, 2, TextureFormat.RGBA32, false);

@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace BorderValley.Presentation
 {
+    [DisallowMultipleComponent]
     public sealed class SpriteAnimator : MonoBehaviour
     {
         private SpriteRenderer spriteRenderer;

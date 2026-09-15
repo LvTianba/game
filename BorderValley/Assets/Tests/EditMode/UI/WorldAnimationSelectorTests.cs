@@ -23,7 +23,10 @@ namespace BorderValley.UI.Tests
         {
             Assert.That(
                 WorldAnimationSelector.Resolve(new Vector2(1f, 1f)),
-                Is.EqualTo(WorldFacing.East));
+                Is.EqualTo(WorldFacing.North));
+            Assert.That(
+                WorldAnimationSelector.Resolve(new Vector2(-1f, -1f)),
+                Is.EqualTo(WorldFacing.South));
             Assert.That(
                 WorldAnimationSelector.Resolve(new Vector2(0.2f, 0.9f)),
                 Is.EqualTo(WorldFacing.North));
@@ -50,6 +53,26 @@ namespace BorderValley.UI.Tests
             string expected)
         {
             Assert.That(WorldAnimationSelector.BuildClipId(facing, moving), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void BuildClipId_RepeatedCalls_ReturnsCachedIds()
+        {
+            foreach (var facing in new[]
+                     {
+                         WorldFacing.South,
+                         WorldFacing.East,
+                         WorldFacing.North,
+                         WorldFacing.West
+                     })
+            {
+                foreach (var moving in new[] { false, true })
+                {
+                    Assert.That(
+                        WorldAnimationSelector.BuildClipId(facing, moving),
+                        Is.SameAs(WorldAnimationSelector.BuildClipId(facing, moving)));
+                }
+            }
         }
     }
 }
