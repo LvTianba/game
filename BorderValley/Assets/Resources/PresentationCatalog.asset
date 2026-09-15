@@ -1,0 +1,735 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecdca3971e92a1e4e9ec6139bb2cf6e4, type: 3}
+  m_Name: PresentationCatalog
+  m_EditorClassIdentifier: BorderValley.Presentation::BorderValley.Presentation.PresentationCatalog
+  visualClips:
+  - id: world.player.south.idle
+    frames:
+    - {fileID: 3905426659871857311, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: 2539463316884083433, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 3
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.south.walk
+    frames:
+    - {fileID: -5557685436007509431, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: 2660105878514860018, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.east.idle
+    frames:
+    - {fileID: 8701130021132313030, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: 4433390949099127126, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 3
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.east.walk
+    frames:
+    - {fileID: -2121248807117094307, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: -1415113437245492727, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.north.idle
+    frames:
+    - {fileID: -525461126036462684, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: 6664740974992940031, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 3
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.north.walk
+    frames:
+    - {fileID: 7703157551737212741, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: -6968865818677039461, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.west.idle
+    frames:
+    - {fileID: -8118868670195455524, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: 5309289118962319143, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 3
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.player.west.walk
+    frames:
+    - {fileID: 3449858819044200668, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    - {fileID: 6303760318529402208, guid: 51abef1a57e52f746a2d71566dd64530, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.ground.village
+    frames:
+    - {fileID: 21300000, guid: 9f864ee289eac3543937470ef8c97d69, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.ground.forest
+    frames:
+    - {fileID: 21300000, guid: 99f8dde7dc8d84041a753b18d924c5fb, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.ground.watchtower
+    frames:
+    - {fileID: 21300000, guid: 5513c4358c2b09147b06351f32b89fa0, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.ground.crypt
+    frames:
+    - {fileID: 21300000, guid: be2266fbf71f09e43a210cabbb23d43f, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.elder.idle
+    frames:
+    - {fileID: -5258661868880277240, guid: 733a990215a5dfd46a1fb463468e9e49, type: 3}
+    - {fileID: 4303448929884411500, guid: 733a990215a5dfd46a1fb463468e9e49, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.elder
+    frames:
+    - {fileID: 21300000, guid: 4caa3c159d84c64438af23039ece1f4e, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.merchant.idle
+    frames:
+    - {fileID: -8154481939012059683, guid: f2df7840a848fe2468d699c0036ab990, type: 3}
+    - {fileID: -4476306739155734659, guid: f2df7840a848fe2468d699c0036ab990, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.merchant
+    frames:
+    - {fileID: 21300000, guid: 84f7b3a4ad9589a4ab7ce37d11d98771, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.blacksmith.idle
+    frames:
+    - {fileID: 5050827904238404018, guid: c04a013e84cd54d4c86cf0d3ecc45ef5, type: 3}
+    - {fileID: -1774017546116792727, guid: c04a013e84cd54d4c86cf0d3ecc45ef5, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.blacksmith
+    frames:
+    - {fileID: 21300000, guid: 59915706a572af747afb8d55f6fd68bc, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.innkeeper.idle
+    frames:
+    - {fileID: -5099906267814921316, guid: 241fc85e921c28b42826d884d0a1fdb7, type: 3}
+    - {fileID: -9147516924506562337, guid: 241fc85e921c28b42826d884d0a1fdb7, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.innkeeper
+    frames:
+    - {fileID: 21300000, guid: 357f6a37707b574409e7b33929034a2a, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.ranger.idle
+    frames:
+    - {fileID: 941343707530750316, guid: 0dcf21adc5667f54fb64b0f7caa055e7, type: 3}
+    - {fileID: 7084397051045256739, guid: 0dcf21adc5667f54fb64b0f7caa055e7, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.ranger
+    frames:
+    - {fileID: 21300000, guid: 7e9abd0559c9c1c4eb36e9bfa7b385b3, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.mage.idle
+    frames:
+    - {fileID: 3380412764623710196, guid: 9cdb1d62a07aac14d8b27a32706df8b1, type: 3}
+    - {fileID: -73661477014159033, guid: 9cdb1d62a07aac14d8b27a32706df8b1, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.mage
+    frames:
+    - {fileID: 21300000, guid: 2f6cdb22d6e9a244e8ce7c8813f2ebb5, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.hunter.idle
+    frames:
+    - {fileID: 2656545727391488401, guid: d0ec517be0296ae41ab136c15cc555e9, type: 3}
+    - {fileID: 6454565750238365474, guid: d0ec517be0296ae41ab136c15cc555e9, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.hunter
+    frames:
+    - {fileID: 21300000, guid: 353bd9e34e1a8454ebdcf1105b408aee, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.npc.survivor.idle
+    frames:
+    - {fileID: -2545501003971399789, guid: 70bdc318e3a2a7444b1825f8d2077c5b, type: 3}
+    - {fileID: 3787683962029576557, guid: 70bdc318e3a2a7444b1825f8d2077c5b, type: 3}
+    framesPerSecond: 2
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: portrait.npc.survivor
+    frames:
+    - {fileID: 21300000, guid: c1d5d3250d2c51f47bae56d83017d356, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.marker.chest.idle
+    frames:
+    - {fileID: 21300000, guid: dfae59e56bfaf4c47a518841ad00ab52, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.marker.gather.idle
+    frames:
+    - {fileID: 21300000, guid: 2ba06a6bec93d564f80b2dae974ddb34, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.marker.investigate.idle
+    frames:
+    - {fileID: 21300000, guid: 4d4177814f13d8840b7583681e11e33e, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.marker.area_exit.idle
+    frames:
+    - {fileID: 21300000, guid: 08f5641645435dd4a87ff9e5263cac22, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: world.marker.encounter.idle
+    frames:
+    - {fileID: 21300000, guid: 765435eafebe3044d87a861d2793f134, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.warrior.idle
+    frames:
+    - {fileID: -97103844976741512, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    - {fileID: 841904147233759931, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.warrior.move
+    frames:
+    - {fileID: 1776476908555807696, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    - {fileID: 5278634392610698906, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.warrior.attack
+    frames:
+    - {fileID: -1851461793614762451, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    - {fileID: -6586977634778336674, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.warrior.hit
+    frames:
+    - {fileID: 755910534809103254, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    - {fileID: 4022330231226645060, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.warrior.down
+    frames:
+    - {fileID: -7897665371561107903, guid: becc2b8659cdc9c40b3d231413305579, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.ranger.idle
+    frames:
+    - {fileID: -9057189657455492924, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    - {fileID: -5591037895009152155, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.ranger.move
+    frames:
+    - {fileID: 5826356442772022374, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    - {fileID: -6293039293595963082, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.ranger.attack
+    frames:
+    - {fileID: 4847580494706944889, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    - {fileID: 4409600416533833972, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.ranger.hit
+    frames:
+    - {fileID: 4929630967822643321, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    - {fileID: -6816428084969291697, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.ranger.down
+    frames:
+    - {fileID: 855015181261817020, guid: 3e775a1645f77a641af5b73c04dd1a1b, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.mage.idle
+    frames:
+    - {fileID: -741236588073621259, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    - {fileID: -3391179041717903378, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.mage.move
+    frames:
+    - {fileID: 4041716267015992548, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    - {fileID: -2469824940478041097, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.mage.attack
+    frames:
+    - {fileID: -8679902758690025935, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    - {fileID: -4265217734265864664, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.mage.hit
+    frames:
+    - {fileID: 6028355555836941830, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    - {fileID: -7184102299625798642, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.mage.down
+    frames:
+    - {fileID: -3031771677423389516, guid: 2d9382ebdc94d3b4ab807ebf601594db, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.bandit.idle
+    frames:
+    - {fileID: 2755928801760665220, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    - {fileID: -3878935547978875466, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.bandit.move
+    frames:
+    - {fileID: -5037441910874431481, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    - {fileID: 5664668116633953154, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.bandit.attack
+    frames:
+    - {fileID: 4747414712607869409, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    - {fileID: 9081694793641828557, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.bandit.hit
+    frames:
+    - {fileID: 6847573546646364824, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    - {fileID: -2131010155094265229, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.bandit.down
+    frames:
+    - {fileID: 794202819680553849, guid: 2485dfeba5f32eb4c83e31694c14c71b, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.wolf.idle
+    frames:
+    - {fileID: 8273157764272745659, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    - {fileID: -6898280506466945136, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.wolf.move
+    frames:
+    - {fileID: 6368942675192291241, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    - {fileID: -6486257087140718319, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.wolf.attack
+    frames:
+    - {fileID: -1019558423306621860, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    - {fileID: -4156280637307756661, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.wolf.hit
+    frames:
+    - {fileID: 3992041795503052972, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    - {fileID: -819441082740087448, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.wolf.down
+    frames:
+    - {fileID: 250570217490117481, guid: c4b6d94b228993743a40ba4518ab6d2c, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.skeleton.idle
+    frames:
+    - {fileID: -4924537715975562322, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    - {fileID: -7198953278181062652, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.skeleton.move
+    frames:
+    - {fileID: 4891788662868582108, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    - {fileID: 7471390782676426831, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.skeleton.attack
+    frames:
+    - {fileID: -1779530903607154825, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    - {fileID: 6452506776175966503, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.skeleton.hit
+    frames:
+    - {fileID: -7437312311701725536, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    - {fileID: 2375692191977587370, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.skeleton.down
+    frames:
+    - {fileID: 68355663274685253, guid: 9eed0d0849062e945880c2ebca188515, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.boss.idle
+    frames:
+    - {fileID: 7089209070587706317, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    - {fileID: -5418526327745457388, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    framesPerSecond: 4
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.boss.move
+    frames:
+    - {fileID: 7833582847371459903, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    - {fileID: -1589517063103663334, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    framesPerSecond: 8
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.boss.attack
+    frames:
+    - {fileID: 2010919155191285644, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    - {fileID: -7632643121307107902, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    framesPerSecond: 10
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.boss.hit
+    frames:
+    - {fileID: -5124873860336043892, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    - {fileID: 551231139327942122, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    framesPerSecond: 12
+    loop: 1
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: battle.unit.boss.down
+    frames:
+    - {fileID: 2235574539030529187, guid: be9af0988662c104fbcc01605120d183, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: ui.panel
+    frames:
+    - {fileID: 21300000, guid: 0a31674b092144c479bb86cf5a028e19, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: ui.button
+    frames:
+    - {fileID: 21300000, guid: 0fcd349ca9453fa40980f5df0297704e, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: ui.button.hover
+    frames:
+    - {fileID: 21300000, guid: 97ef6ef60ce0e8c41b0a7d6568b1b4ef, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: ui.button.pressed
+    frames:
+    - {fileID: 21300000, guid: b74b8ce7819c6ad4d8de414589ad62d9, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: ui.missing
+    frames:
+    - {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: item.weapon
+    frames:
+    - {fileID: 21300000, guid: 116d9dd7cd05e54448bae40e85074b3a, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: item.armor
+    frames:
+    - {fileID: 21300000, guid: 97f0e2bdcacf38d49baf3faf39793a3a, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  - id: item.accessory
+    frames:
+    - {fileID: 21300000, guid: f358b86782a33df4a8a1b2a92255a399, type: 3}
+    framesPerSecond: 1
+    loop: 0
+    fallback: {fileID: 21300000, guid: f010c12cd340cf74f87340c6429594e3, type: 3}
+  audioCues:
+  - id: bgm.menu
+    clip: {fileID: 8300000, guid: ee5af378d2d5cc94bb61535643458637, type: 3}
+    volume: 0.38
+    loop: 1
+    channel: 0
+  - id: bgm.world.village
+    clip: {fileID: 8300000, guid: 0f6c1ce7bb0314949bc2720e16dbf9b4, type: 3}
+    volume: 0.38
+    loop: 1
+    channel: 0
+  - id: bgm.world.forest
+    clip: {fileID: 8300000, guid: 908ab4a46fd2bab4daa40a8a50365f1f, type: 3}
+    volume: 0.38
+    loop: 1
+    channel: 0
+  - id: bgm.world.watchtower
+    clip: {fileID: 8300000, guid: dbe42a16187db1647a343d64d47bef34, type: 3}
+    volume: 0.38
+    loop: 1
+    channel: 0
+  - id: bgm.world.crypt
+    clip: {fileID: 8300000, guid: e2136967ab479774dbcb9f8cc647285b, type: 3}
+    volume: 0.38
+    loop: 1
+    channel: 0
+  - id: bgm.battle
+    clip: {fileID: 8300000, guid: 36090df9198c91747be07b9a5f086018, type: 3}
+    volume: 0.38
+    loop: 1
+    channel: 0
+  - id: bgm.victory
+    clip: {fileID: 8300000, guid: f3d80d84ccaa4fc4c849f519fb0e1621, type: 3}
+    volume: 0.42
+    loop: 0
+    channel: 0
+  - id: sfx.ui.click
+    clip: {fileID: 8300000, guid: 0d08b393496a8ea4fbca4e169f736f54, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.ui.confirm
+    clip: {fileID: 8300000, guid: d67c5693539a0ae468ff550cf202c63b, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.ui.cancel
+    clip: {fileID: 8300000, guid: 906fab3bbcc0f45459e3959b7ce2d6b2, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.ui.error
+    clip: {fileID: 8300000, guid: 7c411e8d39a142c49aa21f45907c6783, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.dialogue.page
+    clip: {fileID: 8300000, guid: 83ec6b3291a29d04c9bd7d7842d68a9c, type: 3}
+    volume: 0.6
+    loop: 0
+    channel: 1
+  - id: sfx.shop.buy
+    clip: {fileID: 8300000, guid: b41e104ac6cf3ee45aaad6fc995ed86e, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.shop.sell
+    clip: {fileID: 8300000, guid: 82fbfd0c03d329e4f93bef8cdd834c5b, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.inventory.equip
+    clip: {fileID: 8300000, guid: 59bebf2bf4f92f54ba86ae187432189d, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.inventory.craft
+    clip: {fileID: 8300000, guid: a40f3e987ebb2a84a8f95642e73516dd, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 1
+  - id: sfx.world.reward
+    clip: {fileID: 8300000, guid: 5ff7451f87b1ddb48a7c9639d6dd3ac9, type: 3}
+    volume: 0.65
+    loop: 0
+    channel: 2
+  - id: sfx.world.encounter
+    clip: {fileID: 8300000, guid: 355573224e472754dad3c3662cd4724e, type: 3}
+    volume: 0.7
+    loop: 0
+    channel: 2
+  - id: sfx.battle.attack
+    clip: {fileID: 8300000, guid: aea926c0bf9579b419a2aae4b0a4a403, type: 3}
+    volume: 0.7
+    loop: 0
+    channel: 3
+  - id: sfx.battle.hit
+    clip: {fileID: 8300000, guid: c19a205aa8b91ed43aa6a5bb7148440c, type: 3}
+    volume: 0.7
+    loop: 0
+    channel: 3
+  - id: sfx.battle.down
+    clip: {fileID: 8300000, guid: 16aa3485bd45cd34a80621e6c1f222e9, type: 3}
+    volume: 0.7
+    loop: 0
+    channel: 3
+  areaMusic:
+  - key: area.village
+    value: bgm.world.village
+  - key: area.forest
+    value: bgm.world.forest
+  - key: area.watchtower
+    value: bgm.world.watchtower
+  - key: area.crypt
+    value: bgm.world.crypt
+  npcVisuals:
+  - key: npc.elder
+    value: world.npc.elder.idle
+  - key: npc.merchant
+    value: world.npc.merchant.idle
+  - key: npc.blacksmith
+    value: world.npc.blacksmith.idle
+  - key: npc.innkeeper
+    value: world.npc.innkeeper.idle
+  - key: npc.ranger
+    value: world.npc.ranger.idle
+  - key: npc.mage
+    value: world.npc.mage.idle
+  - key: npc.hunter
+    value: world.npc.hunter.idle
+  - key: npc.survivor
+    value: world.npc.survivor.idle
+  - key: npc.ranger_companion
+    value: world.npc.ranger.idle
+  - key: npc.mage_companion
+    value: world.npc.mage.idle
+  npcPortraits:
+  - key: npc.elder
+    value: portrait.npc.elder
+  - key: npc.merchant
+    value: portrait.npc.merchant
+  - key: npc.blacksmith
+    value: portrait.npc.blacksmith
+  - key: npc.innkeeper
+    value: portrait.npc.innkeeper
+  - key: npc.ranger
+    value: portrait.npc.ranger
+  - key: npc.mage
+    value: portrait.npc.mage
+  - key: npc.hunter
+    value: portrait.npc.hunter
+  - key: npc.survivor
+    value: portrait.npc.survivor
+  - key: npc.ranger_companion
+    value: portrait.npc.ranger
+  - key: npc.mage_companion
+    value: portrait.npc.mage
+  characterVisuals:
+  - key: class.warrior
+    value: battle.unit.warrior
+  - key: class.ranger
+    value: battle.unit.ranger
+  - key: class.mage
+    value: battle.unit.mage
+  - key: enemy.bandit
+    value: battle.unit.bandit
+  - key: enemy.ranger
+    value: battle.unit.ranger
+  - key: enemy.mage
+    value: battle.unit.mage
+  - key: enemy.wolf
+    value: battle.unit.wolf
+  - key: enemy.skeleton
+    value: battle.unit.skeleton
+  - key: enemy.crypt_boss
+    value: battle.unit.boss
+  - key: enemy.boss
+    value: battle.unit.boss
+  itemIcons:
+  - key: item.wooden_buckler
+    value: item.armor
+  - key: item.iron_helmet
+    value: item.armor
+  - key: item.leather_armor
+    value: item.armor
+  - key: item.swift_boots
+    value: item.armor
+  - key: item.frost_longsword
+    value: item.weapon
+  - key: item.oak_staff
+    value: item.weapon
+  - key: item.hunter_bow
+    value: item.weapon
+  - key: item.ember_charm
+    value: item.accessory
+  - key: weapon
+    value: item.weapon
+  - key: shield
+    value: item.armor
+  - key: helmet
+    value: item.armor
+  - key: armor
+    value: item.armor
+  - key: accessory
+    value: item.accessory
+  - key: boots
+    value: item.armor
+  uiSprites:
+  - key: ui.panel
+    value: ui.panel
+  - key: ui.button
+    value: ui.button
+  - key: ui.button.hover
+    value: ui.button.hover
+  - key: ui.button.pressed
+    value: ui.button.pressed
+  - key: ui.missing
+    value: ui.missing
+  defaultMusicCueId: bgm.menu
+  missingSpriteId: ui.missing
