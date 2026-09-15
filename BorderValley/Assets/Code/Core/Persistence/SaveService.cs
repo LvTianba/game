@@ -2,13 +2,77 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
+[assembly: InternalsVisibleTo("BorderValley.EditModeTests")]
+
 namespace BorderValley.Core.Persistence
 {
+    internal interface ISaveFileCommitOperations
+    {
+        void Copy(string source, string destination, bool overwrite);
+        void Move(string source, string destination, bool overwrite);
+        void Replace(string source, string destination, string backup);
+    }
+
+    internal sealed class SystemSaveFileCommitOperations : ISaveFileCommitOperations
+    {
+        private const uint MoveFileReplaceExisting = 0x1;
+        private const uint MoveFileWriteThrough = 0x8;
+
+        public void Copy(string source, string destination, bool overwrite) =>
+            File.Copy(source, destination, overwrite);
+
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        public void Move(string source, string destination, bool overwrite)
+        {
+            if (!overwrite)
+            {
+                File.Move(source, destination);
+                return;
+            }
+
+            if (MoveFileEx(
+                    source,
+                    destination,
+                    MoveFileReplaceExisting | MoveFileWriteThrough))
+            {
+                return;
+            }
+
+            throw new IOException(
+                "MoveFileEx failed with Win32 error " + Marshal.GetLastWin32Error() + ".");
+        }
+#else
+        public void Move(string source, string destination, bool overwrite)
+        {
+            if (!overwrite || !File.Exists(destination))
+            {
+                File.Move(source, destination);
+                return;
+            }
+
+            File.Replace(source, destination, null);
+        }
+#endif
+
+        public void Replace(string source, string destination, string backup) =>
+            File.Replace(source, destination, backup);
+
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool MoveFileEx(
+            string existingFileName,
+            string newFileName,
+            uint flags);
+#endif
+    }
+
     public sealed class SaveService
     {
         private enum SaveFileState
@@ -21,15 +85,32 @@ namespace BorderValley.Core.Persistence
 
         private readonly string root;
         private readonly IReadOnlyDictionary<string, ISaveParticipant> participants;
+        private readonly ISaveFileCommitOperations commitOperations;
 
         public SaveService(string root, IEnumerable<ISaveParticipant> participants)
+            : this(root, participants, new SystemSaveFileCommitOperations())
+        {
+        }
+
+        internal SaveService(
+            string root,
+            IEnumerable<ISaveParticipant> participants,
+            ISaveFileCommitOperations commitOperations)
         {
             this.root = root ?? throw new ArgumentNullException(nameof(root));
             this.participants = participants.ToDictionary(item => item.Key, StringComparer.Ordinal);
+            this.commitOperations = commitOperations ?? throw new ArgumentNullException(nameof(commitOperations));
             Directory.CreateDirectory(root);
         }
 
-        public bool HasSave(int slot) => File.Exists(GetPrimaryPath(slot));
+        public bool HasSave(int slot)
+        {
+            var primary = GetPrimaryPath(slot);
+            return File.Exists(primary) ||
+                   File.Exists(primary + ".previous") ||
+                   File.Exists(primary + ".bak") ||
+                   File.Exists(primary + ".bak.previous");
+        }
         public string GetPrimaryPathForTests(int slot) => GetPrimaryPath(slot);
 
         public void Save(int slot, string sceneName)
@@ -65,7 +146,7 @@ namespace BorderValley.Core.Persistence
                 switch (primaryState)
                 {
                     case SaveFileState.Missing:
-                        File.Move(temporary, primary);
+                        commitOperations.Move(temporary, primary, false);
                         break;
                     case SaveFileState.Valid:
                         if (FilesHaveSamePayload(temporary, primary))
@@ -76,19 +157,18 @@ namespace BorderValley.Core.Persistence
 
                         try
                         {
-                            File.Replace(temporary, primary, backup);
+                            commitOperations.Replace(temporary, primary, backup);
                         }
                         catch (Exception exception) when (
                             exception is UnauthorizedAccessException ||
                             exception is PlatformNotSupportedException ||
                             exception is IOException)
                         {
-                            ReplaceByCopy(temporary, primary, backup);
+                            ReplaceWithValidatedBackup(temporary, primary, backup);
                         }
                         break;
                     case SaveFileState.Invalid:
-                        File.Delete(primary);
-                        File.Move(temporary, primary);
+                        ReplaceInvalidPrimary(temporary, primary);
                         break;
                     case SaveFileState.Unreadable:
                         throw primaryReadException ?? new IOException(
@@ -107,7 +187,10 @@ namespace BorderValley.Core.Persistence
         public bool Load(int slot)
         {
             var primary = GetPrimaryPath(slot);
-            return TryRestoreFile(primary) || TryRestoreFile(primary + ".bak");
+            return TryRestoreFile(primary) ||
+                   TryRestoreFile(primary + ".previous") ||
+                   TryRestoreFile(primary + ".bak") ||
+                   TryRestoreFile(primary + ".bak.previous");
         }
 
         public void Delete(int slot)
@@ -117,7 +200,10 @@ namespace BorderValley.Core.Persistence
             {
                 primary,
                 primary + ".bak",
+                primary + ".bak.tmp",
+                primary + ".bak.previous",
                 primary + ".tmp",
+                primary + ".previous",
                 primary + ".sha256",
                 primary + ".bak.sha256"
             })
@@ -298,12 +384,100 @@ namespace BorderValley.Core.Persistence
             catch (UnauthorizedAccessException) { }
         }
 
-        private static void ReplaceByCopy(string temporary, string primary, string backup)
+        private void ReplaceWithValidatedBackup(
+            string temporary,
+            string primary,
+            string backup)
         {
-            if (File.Exists(primary))
-                File.Copy(primary, backup, true);
-            File.Copy(temporary, primary, true);
-            TryDeleteFile(temporary);
+            // EFS can reject replace-existing APIs, so every rename below targets a
+            // vacant path and leaves a complete previous snapshot for recovery.
+            var backupTemporary = backup + ".tmp";
+            var previousBackup = backup + ".previous";
+            var previousPrimary = primary + ".previous";
+            var hadBackup = File.Exists(backup);
+            var previousBackupMoved = false;
+            var backupUpdated = false;
+            var primaryMoved = false;
+
+            TryDeleteFile(backupTemporary);
+            TryDeleteFile(previousBackup);
+            TryDeleteFile(previousPrimary);
+
+            try
+            {
+                commitOperations.Copy(primary, backupTemporary, false);
+                var backupState = InspectSaveFile(backupTemporary, out var backupReadException);
+                if (backupState != SaveFileState.Valid)
+                {
+                    if (backupState == SaveFileState.Unreadable && backupReadException != null)
+                        throw backupReadException;
+                    throw new IOException("Backup copy failed validation.");
+                }
+
+                if (hadBackup)
+                {
+                    commitOperations.Move(backup, previousBackup, false);
+                    previousBackupMoved = true;
+                }
+
+                commitOperations.Move(backupTemporary, backup, false);
+                backupUpdated = true;
+
+                commitOperations.Move(primary, previousPrimary, false);
+                primaryMoved = true;
+                commitOperations.Move(temporary, primary, false);
+
+                TryDeleteFile(previousBackup);
+                TryDeleteFile(previousPrimary);
+            }
+            catch
+            {
+                if (primaryMoved)
+                    TryMove(previousPrimary, primary);
+
+                if (backupUpdated)
+                {
+                    TryDeleteFile(backup);
+                    if (previousBackupMoved)
+                        TryMove(previousBackup, backup);
+                }
+                else if (previousBackupMoved)
+                    TryMove(previousBackup, backup);
+                throw;
+            }
+            finally
+            {
+                TryDeleteFile(backupTemporary);
+            }
+        }
+
+        private void TryMove(string source, string destination)
+        {
+            try
+            {
+                if (File.Exists(source))
+                    commitOperations.Move(source, destination, false);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        private void ReplaceInvalidPrimary(string temporary, string primary)
+        {
+            var previousPrimary = primary + ".previous";
+            TryDeleteFile(previousPrimary);
+            commitOperations.Move(primary, previousPrimary, false);
+            try
+            {
+                commitOperations.Move(temporary, primary, false);
+            }
+            catch
+            {
+                TryMove(previousPrimary, primary);
+                throw;
+            }
+
+            TryDeleteFile(previousPrimary);
         }
 
         private static string ComputeChecksum(string value)

@@ -11,7 +11,14 @@ namespace BorderValley.Core.Tests
 {
     public sealed class SaveServiceTests : IDisposable
     {
-        private readonly string root = Path.Combine(Path.GetTempPath(), "BorderValleyTests", Guid.NewGuid().ToString("N"));
+        private string root;
+
+        [SetUp]
+        public void SetUp() =>
+            root = Path.Combine(Path.GetTempPath(), "BorderValleyTests", Guid.NewGuid().ToString("N"));
+
+        [TearDown]
+        public void TearDown() => DeleteRoot();
 
         [Test]
         public void SaveThenLoad_RestoresParticipant()
@@ -108,6 +115,97 @@ namespace BorderValley.Core.Tests
         }
 
         [Test]
+        public void Save_FallbackCopyInterrupted_PreservesPrimaryAndBackupAndLoadsOldVersions()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var setup = new SaveService(root, new[] { participant });
+            setup.Save(0, "First");
+            participant.Value = 2;
+            setup.Save(0, "Second");
+
+            var primary = setup.GetPrimaryPathForTests(0);
+            var backup = primary + ".bak";
+            var operations = new FaultInjectingSaveCommitOperations
+            {
+                ReplaceFault = (_, _, _) => new UnauthorizedAccessException("forced File.Replace failure")
+            };
+            operations.CopyFault = (_, destination, _) =>
+            {
+                if (!string.Equals(destination, backup, StringComparison.Ordinal) &&
+                    !string.Equals(destination, backup + ".tmp", StringComparison.Ordinal))
+                    return null;
+                File.WriteAllText(destination, "{partial");
+                return new IOException("forced copy interruption");
+            };
+
+            participant.Value = 3;
+            var service = new SaveService(root, new[] { participant }, operations);
+            Assert.Throws<IOException>(() => service.Save(0, "Third"));
+            AssertNoCommitTemps(primary, backup);
+            AssertPrimaryAndBackup(service, participant, 2, "Second", 1, "First");
+        }
+
+        [Test]
+        public void Save_FallbackBackupReplaceFails_PreservesPrimaryAndBackupAndLoadsOldVersions()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var setup = new SaveService(root, new[] { participant });
+            setup.Save(0, "First");
+            participant.Value = 2;
+            setup.Save(0, "Second");
+
+            var primary = setup.GetPrimaryPathForTests(0);
+            var backup = primary + ".bak";
+            var backupMoveAttempts = 0;
+            var operations = new FaultInjectingSaveCommitOperations
+            {
+                ReplaceFault = (_, _, _) => new UnauthorizedAccessException("forced File.Replace failure"),
+                MoveFault = (_, destination, _) =>
+                {
+                    if (!string.Equals(destination, backup, StringComparison.Ordinal) ||
+                        backupMoveAttempts++ > 0)
+                        return null;
+                    return new IOException("forced backup replacement failure");
+                }
+            };
+
+            participant.Value = 3;
+            var service = new SaveService(root, new[] { participant }, operations);
+            Assert.Throws<IOException>(() => service.Save(0, "Third"));
+            AssertNoCommitTemps(primary, backup);
+            AssertPrimaryAndBackup(service, participant, 2, "Second", 1, "First");
+        }
+
+        [Test]
+        public void Save_FallbackPrimaryReplaceFails_PreservesPrimaryAndBackupAndLoadsOldVersions()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var setup = new SaveService(root, new[] { participant });
+            setup.Save(0, "First");
+            participant.Value = 2;
+            setup.Save(0, "Second");
+
+            var primary = setup.GetPrimaryPathForTests(0);
+            var backup = primary + ".bak";
+            var temporary = primary + ".tmp";
+            var operations = new FaultInjectingSaveCommitOperations
+            {
+                ReplaceFault = (_, _, _) => new UnauthorizedAccessException("forced File.Replace failure"),
+                MoveFault = (source, destination, _) =>
+                    string.Equals(source, temporary, StringComparison.Ordinal) &&
+                    string.Equals(destination, primary, StringComparison.Ordinal)
+                        ? new IOException("forced primary replacement failure")
+                        : null
+            };
+
+            participant.Value = 3;
+            var service = new SaveService(root, new[] { participant }, operations);
+            Assert.Throws<IOException>(() => service.Save(0, "Third"));
+            AssertNoCommitTemps(primary, backup);
+            AssertPrimaryAndBackup(service, participant, 2, "Second", 1, "First");
+        }
+
+        [Test]
         public void Save_WritesSinglePrimaryFile_WithoutSidecar()
         {
             var participant = new FakeParticipant { Value = 5 };
@@ -137,6 +235,21 @@ namespace BorderValley.Core.Tests
             participant.Reset();
             Assert.That(service.Load(0), Is.True);
             Assert.That(participant.Value, Is.EqualTo(6));
+            Assert.That(participant.CurrentScene, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void HasSave_WhenOnlyPreviousSnapshotExists_ReturnsTrue()
+        {
+            var participant = new FakeParticipant { Value = 7 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "World");
+            var primary = service.GetPrimaryPathForTests(0);
+            File.Move(primary, primary + ".previous");
+
+            Assert.That(service.HasSave(0), Is.True);
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(7));
             Assert.That(participant.CurrentScene, Is.EqualTo("World"));
         }
 
@@ -234,6 +347,35 @@ namespace BorderValley.Core.Tests
         private void WriteLegacySchemaOneSave(SaveService service, string sceneName, JObject participants) =>
             WriteLegacySave(service, 1, sceneName, participants);
 
+        private static void AssertPrimaryAndBackup(
+            SaveService service,
+            FakeParticipant participant,
+            int primaryValue,
+            string primaryScene,
+            int backupValue,
+            string backupScene)
+        {
+            var primary = service.GetPrimaryPathForTests(0);
+            participant.Reset();
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(primaryValue));
+            Assert.That(participant.CurrentScene, Is.EqualTo(primaryScene));
+
+            File.WriteAllText(primary, "{broken");
+            participant.Reset();
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(backupValue));
+            Assert.That(participant.CurrentScene, Is.EqualTo(backupScene));
+        }
+
+        private static void AssertNoCommitTemps(string primary, string backup)
+        {
+            Assert.That(File.Exists(primary + ".tmp"), Is.False);
+            Assert.That(File.Exists(primary + ".previous"), Is.False);
+            Assert.That(File.Exists(backup + ".tmp"), Is.False);
+            Assert.That(File.Exists(backup + ".previous"), Is.False);
+        }
+
         private static void WriteLegacySave(
             SaveService service,
             int schemaVersion,
@@ -267,7 +409,13 @@ namespace BorderValley.Core.Tests
 
         public void Dispose()
         {
-            if (Directory.Exists(root)) Directory.Delete(root, true);
+            DeleteRoot();
+        }
+
+        private void DeleteRoot()
+        {
+            if (!string.IsNullOrWhiteSpace(root) && Directory.Exists(root))
+                Directory.Delete(root, true);
         }
 
         private sealed class FakeParticipant : ISaveParticipant
@@ -286,6 +434,53 @@ namespace BorderValley.Core.Tests
             }
             public void RestoreContext(string sceneName) => CurrentScene = sceneName;
             public void Reset() { Value = 0; CurrentScene = string.Empty; }
+        }
+
+        private sealed class FaultInjectingSaveCommitOperations : ISaveFileCommitOperations
+        {
+            private readonly ISaveFileCommitOperations inner = new SystemSaveFileCommitOperations();
+
+            public Func<string, string, bool, Exception> CopyFault { get; set; }
+            public Func<string, string, bool, Exception> MoveFault { get; set; }
+            public Func<string, string, string, Exception> ReplaceFault { get; set; }
+
+            public void Copy(string source, string destination, bool overwrite)
+            {
+                ThrowIfFaulted(CopyFault, source, destination, overwrite);
+                inner.Copy(source, destination, overwrite);
+            }
+
+            public void Move(string source, string destination, bool overwrite)
+            {
+                ThrowIfFaulted(MoveFault, source, destination, overwrite);
+                inner.Move(source, destination, overwrite);
+            }
+
+            public void Replace(string source, string destination, string backup)
+            {
+                ThrowIfFaulted(ReplaceFault, source, destination, backup);
+                inner.Replace(source, destination, backup);
+            }
+
+            private static void ThrowIfFaulted(
+                Func<string, string, bool, Exception> fault,
+                string source,
+                string destination,
+                bool overwrite)
+            {
+                var exception = fault?.Invoke(source, destination, overwrite);
+                if (exception != null) throw exception;
+            }
+
+            private static void ThrowIfFaulted(
+                Func<string, string, string, Exception> fault,
+                string source,
+                string destination,
+                string backup)
+            {
+                var exception = fault?.Invoke(source, destination, backup);
+                if (exception != null) throw exception;
+            }
         }
     }
 }
