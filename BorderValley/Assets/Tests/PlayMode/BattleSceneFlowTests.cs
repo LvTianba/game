@@ -7,6 +7,7 @@ using BorderValley.Core.BattleFlow;
 using BorderValley.Core.SceneManagement;
 using BorderValley.Data;
 using BorderValley.Data.World;
+using BorderValley.Presentation;
 using BorderValley.UI.Battle;
 using BorderValley.UI.World;
 using NUnit.Framework;
@@ -175,6 +176,38 @@ namespace BorderValley.PlayModeTests
             Assert.That(controller.RenderedCellCount, Is.EqualTo(48));
             Assert.That(controller.RenderedUnitCount, Is.EqualTo(6));
             Assert.That(controller.EndTurnButton, Is.Not.Null);
+
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            Assert.That(grid, Is.Not.Null);
+            Assert.That(grid.RenderedUnitSpriteCount, Is.GreaterThan(0));
+            Assert.That(grid.UnitSpriteSize, Is.EqualTo(new Vector2Int(64, 64)));
+        }
+
+        [UnityTest]
+        public IEnumerator BattleScene_PresentationEvent_UsesRequestedAnimationClip()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            yield return SceneManager.LoadSceneAsync("Battle");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<BattleSceneController>();
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            var presentation = GameBootstrapper.Context.Get<IPresentationService>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(grid, Is.Not.Null);
+            Assert.That(presentation, Is.Not.Null);
+
+            grid.PlayEvent(
+                new BattlePresentationEvent(controller.ActiveUnitId, BattlePresentationEventKind.Hit),
+                presentation);
+
+            Assert.That(
+                grid.GetComponentsInChildren<SpriteAnimator>(true)
+                    .Any(animator => animator.CurrentClipId.EndsWith(
+                        ".hit",
+                        System.StringComparison.Ordinal)),
+                Is.True);
         }
 
         [UnityTest]

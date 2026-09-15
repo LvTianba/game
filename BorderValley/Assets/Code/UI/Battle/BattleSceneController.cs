@@ -6,6 +6,7 @@ using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
 using BorderValley.Core.Random;
 using BorderValley.Core.SceneManagement;
+using BorderValley.Presentation;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -19,11 +20,14 @@ namespace BorderValley.UI.Battle
         private BattleUiPresenter presenter;
         private BattleGridView gridView;
         private BattleHudView hudView;
+        private IPresentationService presentation;
+        private BattlePresentationTracker presentationTracker;
         private BattleContext battleContext;
         private string returnScene = string.Empty;
         private Coroutine enemyTurnRoutine;
         private bool enemyTurnLoopActive;
         private bool continueHandled;
+        private long observedStateVersion = -1;
 
         public int RenderedCellCount => gridView == null ? 0 : gridView.CellCount;
         public int RenderedUnitCount => gridView == null ? 0 : gridView.UnitCount;
@@ -59,6 +63,8 @@ namespace BorderValley.UI.Battle
             presenter = new BattleUiPresenter(
                 BattleScenarioFactory.CreateScenario(partySnapshot, battleContext, scenarioId),
                 RandomSourceFactory.FromSeed(seed));
+            presentation = ResolvePresentation();
+            presentationTracker = new BattlePresentationTracker();
 
             var root = new GameObject(
                 "BattleCanvas",
@@ -71,7 +77,7 @@ namespace BorderValley.UI.Battle
 
             gridView = CreateGridView(root.transform);
             hudView = CreateHudView(root.transform);
-            gridView.Initialize(OnCellSelected);
+            gridView.Initialize(OnCellSelected, presentation);
             hudView.Initialize(OnSkillSelected, OnEndTurn, OnContinue);
 
             presenter.Changed += Refresh;
@@ -148,9 +154,38 @@ namespace BorderValley.UI.Battle
             if (presenter == null || gridView == null || hudView == null)
                 return;
 
-            gridView.Render(presenter);
-            hudView.Render(presenter);
+            if (observedStateVersion != presenter.StateVersion)
+            {
+                observedStateVersion = presenter.StateVersion;
+                var events = presentationTracker.Observe(
+                    presenter.Engine.State,
+                    presenter.LastCommand,
+                    presenter.LastResult,
+                    presenter.ActiveUnit?.Id ?? string.Empty);
+                gridView.Render(presenter, presentation);
+                hudView.Render(presenter);
+
+                foreach (var presentationEvent in events)
+                    gridView.PlayEvent(presentationEvent, presentation);
+            }
+
             TryStartEnemyTurns();
+        }
+
+        private static IPresentationService ResolvePresentation()
+        {
+            if (GameBootstrapper.Context != null &&
+                GameBootstrapper.Context.TryGet<IPresentationService>(out var service) &&
+                service != null)
+            {
+                return service;
+            }
+
+            var catalog = Resources.Load<PresentationCatalog>("PresentationCatalog");
+            if (catalog != null)
+                return new PresentationService(catalog, null);
+
+            return new NullPresentationService();
         }
 
         private void TryStartEnemyTurns()

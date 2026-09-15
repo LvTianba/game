@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace BorderValley.Presentation.Tests
 {
@@ -97,6 +98,31 @@ namespace BorderValley.Presentation.Tests
             var clip = new VisualClip("idle", Array.Empty<Sprite>(), 1f, false, null);
 
             Assert.Throws<InvalidOperationException>(() => animator.Play(clip));
+        }
+
+        [Test]
+        public void Play_WithImage_UpdatesImageSprite()
+        {
+            var texture = new Texture2D(4, 2, TextureFormat.RGBA32, false);
+            owned.Add(texture);
+            var first = Sprite.Create(texture, new Rect(0f, 0f, 2f, 2f), Vector2.one * 0.5f, 2f);
+            owned.Add(first);
+            var second = Sprite.Create(texture, new Rect(2f, 0f, 2f, 2f), Vector2.one * 0.5f, 2f);
+            owned.Add(second);
+            var root = new GameObject(
+                "image-animator",
+                typeof(RectTransform),
+                typeof(Image),
+                typeof(SpriteAnimator));
+            owned.Add(root);
+            var image = root.GetComponent<Image>();
+            var animator = root.GetComponent<SpriteAnimator>();
+
+            animator.Play(new VisualClip("idle", new[] { first, second }, 10f, true, first));
+            Assert.That(image.sprite, Is.SameAs(first));
+
+            animator.Tick(0.1f);
+            Assert.That(image.sprite, Is.SameAs(second));
         }
 
         [Test]

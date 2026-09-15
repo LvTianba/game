@@ -28,6 +28,9 @@ namespace BorderValley.UI.Battle
         public bool IsFinished => engine.Outcome != BattleOutcome.InProgress;
         public string SelectedSkillId { get; private set; }
         public BattleOutcome Outcome => engine.Outcome;
+        public BattleCommand LastCommand { get; private set; }
+        public BattleActionResult LastResult { get; private set; }
+        public long StateVersion { get; private set; }
 
         public void Start()
         {
@@ -49,9 +52,12 @@ namespace BorderValley.UI.Battle
             if (!IsPlayerTurn)
                 return BattleActionResult.Failed(BattleTextKeys.NotPlayerTurn);
 
+            BattleCommand command;
             var result = SelectedSkillId == null
-                ? TryMoveOrBasicAttack(cell)
-                : TryUseSelectedSkill(cell);
+                ? TryMoveOrBasicAttack(cell, out command)
+                : TryUseSelectedSkill(cell, out command);
+            LastCommand = command;
+            LastResult = result;
             SelectedSkillId = null;
             Notify();
             return result;
@@ -66,6 +72,8 @@ namespace BorderValley.UI.Battle
         {
             var activeUnitId = ActiveUnit?.Id;
             var result = engine.Execute(command);
+            LastCommand = command;
+            LastResult = result;
             var isSuccessfulEndTurn = result.Success && command is EndTurnCommand;
             if (IsFinished ||
                 isSuccessfulEndTurn ||
@@ -112,7 +120,9 @@ namespace BorderValley.UI.Battle
         private IReadOnlyDictionary<GridPosition, int> ReachableCells =>
             BattleMovement.FindReachableDestinations(engine.State, ActiveUnit);
 
-        private BattleActionResult TryMoveOrBasicAttack(GridPosition cell)
+        private BattleActionResult TryMoveOrBasicAttack(
+            GridPosition cell,
+            out BattleCommand command)
         {
             var skills = engine.GetOwnedSkills(ActiveUnit.Id);
             var basicSkill = skills.Values.FirstOrDefault(skill =>
@@ -127,16 +137,20 @@ namespace BorderValley.UI.Battle
                     .FirstOrDefault(unit => unit.Position == cell);
                 if (target != null)
                 {
-                    return engine.Execute(
-                        new UseSkillCommand(ActiveUnit.Id, basicSkill.Id, target.Id));
+                    command = new UseSkillCommand(ActiveUnit.Id, basicSkill.Id, target.Id);
+                    return engine.Execute(command);
                 }
             }
 
-            return engine.Execute(new MoveCommand(ActiveUnit.Id, cell));
+            command = new MoveCommand(ActiveUnit.Id, cell);
+            return engine.Execute(command);
         }
 
-        private BattleActionResult TryUseSelectedSkill(GridPosition cell)
+        private BattleActionResult TryUseSelectedSkill(
+            GridPosition cell,
+            out BattleCommand command)
         {
+            command = null;
             var skills = engine.GetOwnedSkills(ActiveUnit.Id);
             if (!skills.TryGetValue(SelectedSkillId, out var skill))
                 return BattleActionResult.Failed(BattleTextKeys.InvalidTarget);
@@ -149,7 +163,8 @@ namespace BorderValley.UI.Battle
                     return BattleActionResult.Failed(BattleTextKeys.InvalidTarget);
                 }
 
-                return engine.Execute(new UseSkillCommand(ActiveUnit.Id, skill.Id, cell));
+                command = new UseSkillCommand(ActiveUnit.Id, skill.Id, cell);
+                return engine.Execute(command);
             }
 
             var target = engine.State.LivingUnits.FirstOrDefault(unit => unit.Position == cell);
@@ -159,9 +174,14 @@ namespace BorderValley.UI.Battle
                 return BattleActionResult.Failed(BattleTextKeys.InvalidTarget);
             }
 
-            return engine.Execute(new UseSkillCommand(ActiveUnit.Id, skill.Id, target.Id));
+            command = new UseSkillCommand(ActiveUnit.Id, skill.Id, target.Id);
+            return engine.Execute(command);
         }
 
-        private void Notify() => Changed?.Invoke();
+        private void Notify()
+        {
+            StateVersion++;
+            Changed?.Invoke();
+        }
     }
 }

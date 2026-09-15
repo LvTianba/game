@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace BorderValley.Presentation
 {
@@ -7,6 +8,8 @@ namespace BorderValley.Presentation
     public sealed class SpriteAnimator : MonoBehaviour
     {
         private SpriteRenderer spriteRenderer;
+        private Image imageRenderer;
+        private bool rendererResolved;
         private VisualClip currentClip;
         private Sprite[] frames = Array.Empty<Sprite>();
 
@@ -75,17 +78,29 @@ namespace BorderValley.Presentation
                 return;
 
             var frameIndex = Mathf.Clamp(index, 0, frames.Length - 1);
-            spriteRenderer.sprite = frames[frameIndex] != null
+            var sprite = frames[frameIndex] != null
                 ? frames[frameIndex]
                 : currentClip?.Fallback;
+            if (spriteRenderer != null)
+                spriteRenderer.sprite = sprite;
+            else
+                imageRenderer.sprite = sprite;
         }
 
         private void EnsureRenderer()
         {
-            if (spriteRenderer == null)
+            if (!rendererResolved)
+            {
                 spriteRenderer = GetComponent<SpriteRenderer>();
-            if (spriteRenderer == null)
-                throw new InvalidOperationException("SpriteAnimator requires a SpriteRenderer on the same GameObject.");
+                imageRenderer = spriteRenderer == null ? GetComponent<Image>() : null;
+                rendererResolved = true;
+            }
+
+            if (spriteRenderer == null && imageRenderer == null)
+            {
+                throw new InvalidOperationException(
+                    "SpriteAnimator requires a SpriteRenderer or Image on the same GameObject.");
+            }
         }
 
         private static Sprite[] ResolveFrames(VisualClip clip)
