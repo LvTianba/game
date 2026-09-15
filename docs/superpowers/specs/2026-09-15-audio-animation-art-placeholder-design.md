@@ -246,7 +246,7 @@ UI：
 导入设置：
 
 - Texture Type：Sprite。
-- Sprite Mode：Single，Godot 之外的 Atlas 仅在确实减少文件数时使用。
+- Sprite Mode：单帧素材使用 Single；动画 sprite sheet 使用 Multiple 并明确切片。
 - Pixels Per Unit：32，战斗 UI 仍按原像素显示。
 - Filter Mode：Point。
 - Compression：None 或高质量无损。
