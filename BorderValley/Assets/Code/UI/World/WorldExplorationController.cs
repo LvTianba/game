@@ -12,6 +12,7 @@ using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
+using BorderValley.Presentation;
 using BorderValley.UI.Inventory;
 using BorderValley.World;
 using UnityEngine;
@@ -45,6 +46,7 @@ namespace BorderValley.UI.World
         private IBattleFlow flow;
         private ISceneLoader loader;
         private SaveService save;
+        private IPresentationService presentation;
         private ContentCatalog catalog;
         private IReadOnlyDictionary<string, WorldAreaDefinition> areas;
         private IReadOnlyDictionary<string, WorldEncounterDefinition> encounters;
@@ -62,8 +64,10 @@ namespace BorderValley.UI.World
         private readonly HashSet<string> suppressedExitIds = new(StringComparer.Ordinal);
         private QuestLogPanelView questLogView;
         private string pendingBattleResultKey = string.Empty;
+        private WorldFacing playerFacing = WorldFacing.South;
 
         public GameObject Player { get; private set; }
+        public SpriteAnimator PlayerAnimator { get; private set; }
         public VirtualJoystick Joystick { get; private set; }
         public WorldMapView MapView { get; private set; }
         public Button InteractButton { get; private set; }
@@ -123,6 +127,8 @@ namespace BorderValley.UI.World
                 flow = context.Get<IBattleFlow>();
                 loader = context.Get<ISceneLoader>();
                 save = context.Get<SaveService>();
+                if (!context.TryGet<IPresentationService>(out presentation) || presentation == null)
+                    presentation = new NullPresentationService();
                 catalog = context.Get<ContentCatalog>();
                 areas = catalog.All
                     .OfType<WorldAreaDefinition>()
@@ -160,11 +166,13 @@ namespace BorderValley.UI.World
             mapObject.transform.SetParent(transform, false);
             MapView = mapObject.GetComponent<WorldMapView>();
 
-            Player = new GameObject("Player", typeof(SpriteRenderer));
+            Player = new GameObject("Player", typeof(SpriteRenderer), typeof(SpriteAnimator));
             Player.transform.SetParent(transform, false);
             var renderer = Player.GetComponent<SpriteRenderer>();
-            renderer.sprite = CreateWhiteSprite();
-            renderer.color = new Color(0.95f, 0.82f, 0.25f, 1f);
+            PlayerAnimator = Player.GetComponent<SpriteAnimator>();
+            PlayerAnimator.Play(presentation.GetVisualClip(
+                WorldAnimationSelector.BuildClipId(playerFacing, false)));
+            renderer.color = Color.white;
             renderer.sortingOrder = 10;
         }
 
@@ -271,6 +279,7 @@ namespace BorderValley.UI.World
             if (battleStarted || IsUiOpen)
                 return;
 
+            var positionBefore = PlayerPosition;
             var remaining = Mathf.Clamp(deltaTime, 0f, 0.25f);
             while (remaining > 0f)
             {
@@ -293,6 +302,8 @@ namespace BorderValley.UI.World
                 remaining -= step;
             }
 
+            var moved = (PlayerPosition - positionBefore).sqrMagnitude > 0.000001f;
+            UpdatePlayerAnimation(Joystick.Value, moved);
             FollowCamera();
             RefreshInteractionState();
         }
@@ -635,7 +646,7 @@ namespace BorderValley.UI.World
                 LastErrorKey = WorldTextKeys.InvalidPosition;
                 return false;
             }
-            MapView.Render(area, narrative);
+            MapView.Render(area, narrative, presentation);
             FollowCamera();
             if (saveAfter)
                 TrySaveWorld();
@@ -680,7 +691,20 @@ namespace BorderValley.UI.World
         private void RefreshMap()
         {
             if (currentArea != null)
-                MapView.Render(currentArea, narrative);
+                MapView.Render(currentArea, narrative, presentation);
+        }
+
+        private void UpdatePlayerAnimation(Vector2 input, bool moved)
+        {
+            if (PlayerAnimator == null || presentation == null)
+                return;
+
+            if (WorldAnimationSelector.IsMoving(input))
+                playerFacing = WorldAnimationSelector.Resolve(input);
+
+            var moving = moved && WorldAnimationSelector.IsMoving(input);
+            PlayerAnimator.PlayIfChanged(presentation.GetVisualClip(
+                WorldAnimationSelector.BuildClipId(playerFacing, moving)));
         }
 
         private bool GrantInteractable(WorldInteractionResult interaction)
@@ -891,10 +915,5 @@ namespace BorderValley.UI.World
             return font != null ? font : Resources.GetBuiltinResource<Font>("Arial.ttf");
         }
 
-        private static Sprite CreateWhiteSprite() => Sprite.Create(
-            Texture2D.whiteTexture,
-            new Rect(0f, 0f, 1f, 1f),
-            new Vector2(0.5f, 0.5f),
-            1f);
     }
 }

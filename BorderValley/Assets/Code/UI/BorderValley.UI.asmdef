@@ -1,6 +1,6 @@
 {
   "name": "BorderValley.UI",
   "rootNamespace": "BorderValley.UI",
-  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative", "BorderValley.World", "Unity.InputSystem", "UnityEngine.UI"],
+  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative", "BorderValley.Presentation", "BorderValley.World", "Unity.InputSystem", "UnityEngine.UI"],
   "autoReferenced": true
 }

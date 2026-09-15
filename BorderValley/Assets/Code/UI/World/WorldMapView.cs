@@ -2,44 +2,61 @@ using System;
 using System.Collections.Generic;
 using BorderValley.Data.World;
 using BorderValley.Narrative;
+using BorderValley.Presentation;
 using UnityEngine;
 
 namespace BorderValley.UI.World
 {
     public sealed class WorldMapView : MonoBehaviour
     {
-        private static Sprite whiteSprite;
         private readonly List<GameObject> rendered = new();
         private readonly Dictionary<WorldInteractableKind, int> markerCounts = new();
+        private IPresentationService presentation;
 
         public bool HasBackground { get; private set; }
         public int ObstacleCount { get; private set; }
         public int EncounterMarkerCount { get; private set; }
+        public int RenderedSpriteCount => rendered.Count;
 
         public void Render(WorldAreaDefinition area) => Render(area, null);
 
-        public void Render(WorldAreaDefinition area, NarrativeStateService state)
+        public void Render(WorldAreaDefinition area, NarrativeStateService state) =>
+            Render(area, state, null);
+
+        public void Render(
+            WorldAreaDefinition area,
+            NarrativeStateService state,
+            IPresentationService service)
         {
+            if (service != null)
+                presentation = service;
+            if (presentation == null)
+                presentation = new NullPresentationService();
+
             Clear();
             if (area == null)
                 return;
 
             var bounds = area.Bounds;
-            CreateBox(
+            var groundClipId = "world.ground." + AreaSuffix(area.Id);
+            var groundClip = presentation.GetVisualClip(groundClipId);
+            CreateVisual(
                 "Background",
                 bounds.center,
                 new Vector2(Mathf.Abs(bounds.width), Mathf.Abs(bounds.height)),
-                new Color(0.18f, 0.24f, 0.18f, 1f),
+                groundClip,
+                true,
                 -20);
             HasBackground = true;
 
             foreach (var obstacle in area.Obstacles)
             {
-                CreateBox(
+                CreateVisual(
                     "Obstacle_" + ObstacleCount,
                     obstacle.center,
                     new Vector2(Mathf.Abs(obstacle.width), Mathf.Abs(obstacle.height)),
-                    new Color(0.10f, 0.12f, 0.13f, 1f),
+                    groundClip,
+                    true,
                     -10);
                 ObstacleCount++;
             }
@@ -49,8 +66,13 @@ namespace BorderValley.UI.World
                 if (interactable == null || interactable.Kind == WorldInteractableKind.Encounter)
                     continue;
                 var name = interactable.Kind + "_" + interactable.Id;
-                var color = ColorFor(interactable.Kind);
-                CreateBox(name, interactable.Position, Vector2.one * MarkerSize(interactable.Kind), color, 2);
+                CreateVisual(
+                    name,
+                    interactable.Position,
+                    Vector2.one,
+                    presentation.GetVisualClip(ClipIdFor(interactable)),
+                    false,
+                    2);
                 markerCounts.TryGetValue(interactable.Kind, out var count);
                 markerCounts[interactable.Kind] = count + 1;
             }
@@ -59,11 +81,12 @@ namespace BorderValley.UI.World
             {
                 if (!ShouldRenderEncounter(encounter, state))
                     continue;
-                CreateBox(
+                CreateVisual(
                     "Encounter_" + encounter.EncounterId,
                     encounter.Position,
-                    new Vector2(0.9f, 0.9f),
-                    new Color(0.88f, 0.26f, 0.24f, 1f),
+                    Vector2.one,
+                    presentation.GetVisualClip("world.marker.encounter.idle"),
+                    false,
                     5);
                 EncounterMarkerCount++;
             }
@@ -92,38 +115,28 @@ namespace BorderValley.UI.World
             EncounterMarkerCount = 0;
         }
 
-        private void CreateBox(
+        private void CreateVisual(
             string name,
             Vector2 position,
             Vector2 size,
-            Color color,
+            VisualClip clip,
+            bool tiled,
             int sortingOrder)
         {
             var value = new GameObject(name, typeof(SpriteRenderer));
             value.transform.SetParent(transform, false);
             value.transform.position = new Vector3(position.x, position.y, 0f);
-            value.transform.localScale = new Vector3(Mathf.Max(0.05f, size.x), Mathf.Max(0.05f, size.y), 1f);
             var renderer = value.GetComponent<SpriteRenderer>();
-            renderer.sprite = WhiteSprite;
-            renderer.color = color;
+            renderer.sprite = FirstFrame(clip);
+            renderer.color = Color.white;
+            renderer.drawMode = tiled ? SpriteDrawMode.Tiled : SpriteDrawMode.Simple;
+            if (tiled)
+                renderer.size = new Vector2(Mathf.Max(0.05f, size.x), Mathf.Max(0.05f, size.y));
             renderer.sortingOrder = sortingOrder;
             rendered.Add(value);
-        }
 
-        private static Sprite WhiteSprite
-        {
-            get
-            {
-                if (whiteSprite == null)
-                {
-                    whiteSprite = Sprite.Create(
-                        Texture2D.whiteTexture,
-                        new Rect(0f, 0f, 1f, 1f),
-                        new Vector2(0.5f, 0.5f),
-                        1f);
-                }
-                return whiteSprite;
-            }
+            if (clip != null && clip.Frames != null && clip.Frames.Length > 1)
+                value.AddComponent<SpriteAnimator>().Play(clip);
         }
 
         private static bool ShouldRenderEncounter(
@@ -137,23 +150,48 @@ namespace BorderValley.UI.World
                    state == null ||
                    !state.HasEvent(encounter.CompletionEventId);
         }
-        private static float MarkerSize(WorldInteractableKind kind) => kind switch
+        private static Sprite FirstFrame(VisualClip clip)
         {
-            WorldInteractableKind.Npc => 0.8f,
-            WorldInteractableKind.Encounter => 0.9f,
-            WorldInteractableKind.AreaExit => 1.0f,
-            _ => 0.55f
+            if (clip?.Frames != null)
+            {
+                foreach (var frame in clip.Frames)
+                {
+                    if (frame != null)
+                        return frame;
+                }
+            }
+
+            return clip?.Fallback;
+        }
+
+        private static string ClipIdFor(WorldInteractableDefinition interactable) => interactable.Kind switch
+        {
+            WorldInteractableKind.Npc =>
+                "world.npc." +
+                WithoutPrefix(interactable.TargetId, "npc.").Replace("_companion", string.Empty) +
+                ".idle",
+            WorldInteractableKind.Chest => "world.marker.chest.idle",
+            WorldInteractableKind.Gather => "world.marker.gather.idle",
+            WorldInteractableKind.Investigate => "world.marker.investigate.idle",
+            WorldInteractableKind.AreaExit => "world.marker.area_exit.idle",
+            _ => "world.marker." + interactable.Kind.ToString().ToLowerInvariant() + ".idle"
         };
 
-        private static Color ColorFor(WorldInteractableKind kind) => kind switch
+        private static string AreaSuffix(string areaId)
         {
-            WorldInteractableKind.Npc => new Color(0.38f, 0.72f, 0.92f, 1f),
-            WorldInteractableKind.Chest => new Color(0.92f, 0.72f, 0.18f, 1f),
-            WorldInteractableKind.Gather => new Color(0.42f, 0.86f, 0.38f, 1f),
-            WorldInteractableKind.Investigate => new Color(0.78f, 0.54f, 0.92f, 1f),
-            WorldInteractableKind.AreaExit => new Color(0.90f, 0.90f, 0.90f, 1f),
-            WorldInteractableKind.Encounter => new Color(0.88f, 0.26f, 0.24f, 1f),
-            _ => Color.white
-        };
+            const string prefix = "area.";
+            return !string.IsNullOrWhiteSpace(areaId) &&
+                   areaId.StartsWith(prefix, StringComparison.Ordinal)
+                ? areaId.Substring(prefix.Length)
+                : areaId;
+        }
+
+        private static string WithoutPrefix(string value, string prefix)
+        {
+            return !string.IsNullOrWhiteSpace(value) &&
+                   value.StartsWith(prefix, StringComparison.Ordinal)
+                ? value.Substring(prefix.Length)
+                : value;
+        }
     }
 }
