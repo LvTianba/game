@@ -132,6 +132,7 @@ GameObject:
   - component: {fileID: 705289943}
   - component: {fileID: 705289942}
   - component: {fileID: 705289941}
+  - component: {fileID: 705289946}
   m_Layer: 0
   m_Name: BootServices
   m_TagString: Untagged
@@ -180,6 +181,7 @@ MonoBehaviour:
   serviceInstallers:
   - {fileID: 705289942}
   - {fileID: 705289941}
+  - {fileID: 705289946}
 --- !u!114 &705289944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -207,6 +209,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &705289946
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 705289940}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a40653c6b35a74e4d991f1c14fa26cdf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: BorderValley.Presentation::BorderValley.Presentation.PresentationBootstrapInstaller
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
