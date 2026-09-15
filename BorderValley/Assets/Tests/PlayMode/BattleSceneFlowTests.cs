@@ -359,6 +359,14 @@ namespace BorderValley.PlayModeTests
             Assert.That(BattleTextKeys.StatusKey(StatusType.Stunned), Is.EqualTo("battle.status.stunned"));
         }
 
+        [Test]
+        public void BattleTextKeys_ClassIdsMapToBattleUnitKeys()
+        {
+            Assert.That(BattleTextKeys.Unit("class.warrior"), Is.EqualTo("battle.unit.warrior"));
+            Assert.That(BattleTextKeys.Unit("class.ranger"), Is.EqualTo("battle.unit.ranger"));
+            Assert.That(BattleTextKeys.Unit("class.mage"), Is.EqualTo("battle.unit.mage"));
+        }
+
         [UnityTest]
         public IEnumerator BattleScene_EnemyCommandFailure_FallsBackAndAdvancesTurn()
         {
