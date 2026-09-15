@@ -404,6 +404,59 @@ namespace BorderValley.PlayModeTests
             Assert.That(inventory.Gold, Is.EqualTo(savedGold));
         }
 
+        [UnityTest]
+        public IEnumerator Moving_SyncsNarrativePositionWithoutAutosavingEveryFrame()
+        {
+            yield return LoadWorld();
+            var controller = GetController();
+            var context = GameBootstrapper.Context;
+            var state = context.Get<NarrativeStateService>();
+            var save = context.Get<SaveService>();
+            var startPosition = controller.PlayerPosition;
+            save.Delete(0);
+            var attemptsBeforeMovement = controller.AutosaveAttemptCount;
+
+            yield return MoveNear(controller, new Vector2(4f, 2f));
+
+            Assert.That(Vector2.Distance(controller.PlayerPosition, startPosition), Is.GreaterThan(0.4f));
+            Assert.That(state.GetCurrentAreaId(), Is.EqualTo(VillageId));
+            Assert.That(
+                Vector2.Distance(state.GetCurrentPosition(), controller.PlayerPosition),
+                Is.LessThan(0.0001f));
+            Assert.That(controller.AutosaveAttemptCount, Is.EqualTo(attemptsBeforeMovement));
+            Assert.That(save.HasSave(0), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator ApplicationPause_PersistsMovedPosition_AndReloadedWorldRestoresIt()
+        {
+            yield return LoadWorld();
+            var controller = GetController();
+            var context = GameBootstrapper.Context;
+            var state = context.Get<NarrativeStateService>();
+            var save = context.Get<SaveService>();
+            var startPosition = controller.PlayerPosition;
+
+            yield return MoveNear(controller, new Vector2(4f, 2f));
+            var movedPosition = controller.PlayerPosition;
+            Assert.That(Vector2.Distance(movedPosition, startPosition), Is.GreaterThan(0.4f));
+
+            controller.HandleApplicationPause(true);
+            Assert.That(save.HasSave(0), Is.True);
+
+            Assert.That(state.SetCurrentLocation(VillageId, startPosition), Is.True);
+            Assert.That(save.Load(0), Is.True);
+            Assert.That(state.GetCurrentAreaId(), Is.EqualTo(VillageId));
+            Assert.That(Vector2.Distance(state.GetCurrentPosition(), movedPosition), Is.LessThan(0.0001f));
+
+            yield return SceneManager.LoadSceneAsync("World");
+            yield return null;
+
+            controller = GetController();
+            Assert.That(controller.CurrentAreaId, Is.EqualTo(VillageId));
+            Assert.That(Vector2.Distance(controller.PlayerPosition, movedPosition), Is.LessThan(0.0001f));
+        }
+
         private static IEnumerator LoadWorld()
         {
             yield return SceneManager.LoadSceneAsync("Boot");

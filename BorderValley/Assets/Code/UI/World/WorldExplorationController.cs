@@ -509,7 +509,6 @@ namespace BorderValley.UI.World
         {
             currentArea = area;
             SetPlayerPosition(ClampToArea(area, position));
-            narrative.SetCurrentLocation(area.Id, PlayerPosition);
             MapView.Render(area, narrative);
             FollowCamera();
             if (saveAfter)
@@ -661,8 +660,12 @@ namespace BorderValley.UI.World
 
         private void SetPlayerPosition(Vector2 position)
         {
-            if (Player != null)
-                Player.transform.position = new Vector3(position.x, position.y, 0f);
+            if (Player == null)
+                return;
+
+            Player.transform.position = new Vector3(position.x, position.y, 0f);
+            if (currentArea != null)
+                narrative.SetCurrentLocation(currentArea.Id, PlayerPosition);
         }
 
         private void FollowCamera()
