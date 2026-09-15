@@ -144,9 +144,13 @@ namespace BorderValley.Presentation.Tests
                 output.Play(new AudioCue("sfx.ui.click", first, 1f, false, AudioChannel.Ui));
                 output.Play(new AudioCue("sfx.ui.click", second, 1f, false, AudioChannel.Ui));
 
-                var source = root.GetComponentsInChildren<AudioSource>(true)
-                    .Single(candidate => candidate.gameObject.name == "Ui Audio 1");
-                Assert.That(source.clip, Is.SameAs(first));
+                var uiSources = root.GetComponentsInChildren<AudioSource>(true)
+                    .Where(candidate => candidate.gameObject.name.StartsWith("Ui Audio"))
+                    .ToArray();
+                Assert.That(uiSources.Count(candidate => candidate.clip != null), Is.EqualTo(1));
+                Assert.That(
+                    uiSources.Any(candidate => ReferenceEquals(candidate.clip, second)),
+                    Is.False);
             }
             finally
             {
