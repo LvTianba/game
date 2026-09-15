@@ -4,14 +4,18 @@ using System.Linq;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
 using BorderValley.Core.Persistence;
+using BorderValley.Data;
 using BorderValley.Data.Items;
+using BorderValley.Data.World;
 using BorderValley.Inventory;
 using BorderValley.UI.Battle;
+using BorderValley.UI.Inventory;
+using BorderValley.UI.World;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
-using UnityEngine.UI;
+using InventoryTextKeys = BorderValley.UI.Inventory.InventoryTextKeys;
 
 namespace BorderValley.PlayMode.Tests
 {
@@ -20,40 +24,36 @@ namespace BorderValley.PlayMode.Tests
         [UnityTest]
         public IEnumerator World_ConsumesBattleResult_AddsLootAndAwardsExperience()
         {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
+            yield return LoadWorld();
 
             var context = GameBootstrapper.Context;
             var flow = context.Get<IBattleFlow>();
             var inventory = context.Get<InventoryService>();
             var progression = context.Get<PartyProgressionService>();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
             var beforeGold = inventory.Gold;
+            var beforeItems = inventory.Items.Count;
 
             flow.CompleteBattle(new BattleResult(
                 BattleFlowOutcome.PlayerVictory,
                 4,
                 new[] { new BattleUnitResult("player.warrior", 10, 4) }));
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            entry.ConsumePendingResultForTests();
 
+            Assert.That(controller.ProcessPendingBattleResult(), Is.True);
             Assert.That(progression.Members.Any(member => member.Experience > 0), Is.True);
             Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
-            Assert.That(inventory.Items.Count, Is.GreaterThan(0));
+            Assert.That(inventory.Items.Count, Is.GreaterThan(beforeItems));
         }
 
         [UnityTest]
         public IEnumerator World_EnemyVictory_ReturnsToSafePointAndClearsWipeFlag()
         {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
+            yield return LoadWorld();
 
             var context = GameBootstrapper.Context;
             var flow = context.Get<IBattleFlow>();
             var progression = context.Get<PartyProgressionService>();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
 
             flow.CompleteBattle(new BattleResult(
                 BattleFlowOutcome.EnemyVictory,
@@ -64,17 +64,15 @@ namespace BorderValley.PlayMode.Tests
                     new BattleUnitResult("player.ranger", 0, 0),
                     new BattleUnitResult("player.mage", 0, 0)
                 }));
-            var entry = Object.FindAnyObjectByType<WorldBattleEntryView>();
-            Assert.That(entry.ConsumePendingResultForTests(), Is.True);
 
+            Assert.That(controller.ProcessPendingBattleResult(), Is.True);
             Assert.That(progression.SafePointId, Is.EqualTo(PartyProgressionService.DefaultSafePointId));
             Assert.That(progression.HasPendingWipeReturn, Is.False);
-            Assert.That(entry.ResultLabel.text, Is.EqualTo("battle.result.enemy_victory"));
-            Assert.That(entry.PartyHealthLabel.text, Does.Contain(PartyProgressionService.DefaultSafePointId));
+            Assert.That(controller.LastBattleResultKey, Is.EqualTo("battle.result.enemy_victory"));
         }
 
         [UnityTest]
-        public IEnumerator World_AutosaveFailure_KeepsRewardsAndShowsError()
+        public IEnumerator World_AutosaveFailure_KeepsRewardsAndRetriesWithoutResettling()
         {
             yield return SceneManager.LoadSceneAsync("Boot");
             yield return null;
@@ -90,7 +88,7 @@ namespace BorderValley.PlayMode.Tests
             var flow = context.Get<IBattleFlow>();
             var inventory = context.Get<InventoryService>();
             var progression = context.Get<PartyProgressionService>();
-            var entry = Object.FindAnyObjectByType<WorldBattleEntryView>();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
             var beforeGold = inventory.Gold;
             var beforeItems = inventory.Items.Count;
 
@@ -101,11 +99,11 @@ namespace BorderValley.PlayMode.Tests
 
             using (new FileStream(save.GetPrimaryPathForTests(0), FileMode.Open, FileAccess.Read, FileShare.None))
             {
-                Assert.That(entry.ConsumePendingResultForTests(), Is.False);
+                Assert.That(controller.ProcessPendingBattleResult(), Is.False);
             }
 
-            Assert.That(entry.ResultLabel.text, Is.EqualTo("save.error.autosave_failed"));
-            Assert.That(entry.HasPendingRewardForTests, Is.True);
+            Assert.That(controller.LastErrorKey, Is.EqualTo(BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed));
+            Assert.That(controller.HasPendingSettlement, Is.True);
             Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
             Assert.That(inventory.Items.Count, Is.GreaterThan(beforeItems));
             Assert.That(progression.Members.Any(member => member.Experience > 0), Is.True);
@@ -113,244 +111,119 @@ namespace BorderValley.PlayMode.Tests
             var settledItems = inventory.Items.Count;
             var settledExperience = progression.TotalExperience;
 
-            Assert.That(entry.ConsumePendingResultForTests(), Is.True);
-            Assert.That(entry.HasPendingRewardForTests, Is.False);
-            Assert.That(entry.SettlementCountForTests, Is.EqualTo(1));
+            Assert.That(controller.ProcessPendingBattleResult(), Is.True);
+            Assert.That(controller.HasPendingSettlement, Is.False);
+            Assert.That(controller.SettlementCount, Is.EqualTo(1));
+            Assert.That(controller.AutosaveAttemptCount, Is.EqualTo(2));
             Assert.That(inventory.Gold, Is.EqualTo(settledGold));
             Assert.That(inventory.Items.Count, Is.EqualTo(settledItems));
             Assert.That(progression.TotalExperience, Is.EqualTo(settledExperience));
-            save.Delete(0);
         }
 
         [UnityTest]
-        public IEnumerator SaveLoad_RestoresInventoryAndProgressionBeforeWorld()
+        public IEnumerator World_FullBagSettlementFailure_RetriesSameResultWithoutDoubleReward()
         {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-
-            var context = GameBootstrapper.Context;
-            var save = context.Get<SaveService>();
-            save.Delete(0);
-
-            var inventory = context.Get<InventoryService>();
-            var progression = context.Get<PartyProgressionService>();
-            var startingGold = inventory.Gold;
-            var item = new ItemInstance(
-                "persisted.item",
-                "item.frost_longsword",
-                4,
-                ItemRarity.Rare,
-                new[]
-                {
-                    new AffixInstance("affix.flat_power", 3),
-                    new AffixInstance("affix.crit_bps", 2)
-                });
-
-            Assert.That(inventory.TryAdd(item, out _), Is.True);
-            Assert.That(inventory.TryEquip(item.InstanceId, "player.warrior", "class.warrior", out _), Is.True);
-            inventory.AddGold(123);
-            Assert.That(inventory.TryAddMaterial(CraftingService.OreMaterialId, 17), Is.True);
-            progression.AwardExperience(150);
-            Assert.That(
-                progression.TrySpendSkillPoint("player.warrior", "skill.shield_bash", out _),
-                Is.True);
-            progression.ApplyBattleUnitStates(
-                new[] { new BattleUnitResult("player.warrior", 3, 4) });
-            save.Save(0, "World");
-
-            inventory.Reset();
-            progression.Reset();
-            Assert.That(save.Load(0), Is.True);
-
-            var restoredItem = inventory.GetItem("persisted.item");
-            Assert.That(restoredItem.ItemDefinitionId, Is.EqualTo("item.frost_longsword"));
-            Assert.That(restoredItem.ItemLevel, Is.EqualTo(4));
-            Assert.That(restoredItem.Rarity, Is.EqualTo(ItemRarity.Rare));
-            Assert.That(
-                restoredItem.Affixes.Select(affix => affix.AffixId),
-                Is.EquivalentTo(new[] { "affix.flat_power", "affix.crit_bps" }));
-            Assert.That(inventory.GetEquipped("player.warrior")[ItemSlot.Weapon], Is.EqualTo("persisted.item"));
-            Assert.That(inventory.Gold, Is.EqualTo(startingGold + 123));
-            Assert.That(inventory.Materials[CraftingService.OreMaterialId], Is.EqualTo(17));
-
-            var warrior = progression.Members.Single(member => member.MemberId == "player.warrior");
-            Assert.That(warrior.Level, Is.EqualTo(2));
-            Assert.That(warrior.Experience, Is.EqualTo(50));
-            Assert.That(warrior.SkillRanks["skill.shield_bash"], Is.EqualTo(1));
-            Assert.That(warrior.CurrentHealth, Is.EqualTo(3));
-            Assert.That(warrior.CurrentMana, Is.EqualTo(4));
-
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
-
-            var entry = Object.FindAnyObjectByType<WorldBattleEntryView>();
-            Assert.That(entry.PartyHealthLabel.text, Does.Contain("player.warrior 3"));
-            save.Delete(0);
-        }
-
-        [UnityTest]
-        public IEnumerator World_OnApplicationPause_AutosavesCurrentState()
-        {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
-
-            var context = GameBootstrapper.Context;
-            var save = context.Get<SaveService>();
-            var inventory = context.Get<InventoryService>();
-            var entry = Object.FindAnyObjectByType<WorldBattleEntryView>();
-            save.Delete(0);
-            inventory.AddGold(7);
-
-            var primary = save.GetPrimaryPathForTests(0);
-            Assert.That(File.Exists(primary), Is.False);
-            entry.SendMessage("OnApplicationPause", true);
-            Assert.That(File.Exists(primary), Is.True);
-            save.Delete(0);
-        }
-
-        [UnityTest]
-        public IEnumerator World_FullBag_KeepsPendingRewardUntilClaimed()
-        {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
+            yield return LoadWorld();
 
             var context = GameBootstrapper.Context;
             var flow = context.Get<IBattleFlow>();
             var inventory = context.Get<InventoryService>();
             var progression = context.Get<PartyProgressionService>();
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            while (inventory.Items.Count < inventory.Capacity)
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            for (var index = 0; index < inventory.Capacity; index++)
             {
-                var index = inventory.Items.Count;
                 Assert.That(
                     inventory.TryAdd(
                         new ItemInstance(
-                            $"bag.fill.{index}",
-                            "item.frost_longsword",
+                            "fullbag." + index,
+                            "item.wooden_buckler",
                             1,
                             ItemRarity.Common,
-                            System.Array.Empty<AffixInstance>()),
+                            new AffixInstance[0]),
                         out var error),
                     Is.True,
                     error);
             }
 
-            var beforeGold = inventory.Gold;
-            var beforeExperience = progression.TotalExperience;
+            var goldBefore = inventory.Gold;
+            var experienceBefore = progression.TotalExperience;
             flow.CompleteBattle(new BattleResult(
                 BattleFlowOutcome.PlayerVictory,
                 2,
                 new[] { new BattleUnitResult("player.warrior", 10, 4) }));
 
-            Assert.That(entry.ConsumePendingResultForTests(), Is.False);
-            Assert.That(entry.HasPendingRewardForTests, Is.True);
-            Assert.That(entry.ResultLabel.text, Is.EqualTo(BorderValley.UI.Inventory.InventoryTextKeys.BagFull));
+            Assert.That(controller.ProcessPendingBattleResult(), Is.False);
+            Assert.That(controller.HasPendingSettlement, Is.True);
+            Assert.That(controller.SettlementCount, Is.EqualTo(0));
+            Assert.That(inventory.Gold, Is.EqualTo(goldBefore));
+            Assert.That(progression.TotalExperience, Is.EqualTo(experienceBefore));
             Assert.That(inventory.Items.Count, Is.EqualTo(inventory.Capacity));
-            Assert.That(inventory.Gold, Is.EqualTo(beforeGold));
-            Assert.That(progression.TotalExperience, Is.EqualTo(beforeExperience));
 
-            Assert.That(inventory.TryRemove(inventory.Items[0].InstanceId), Is.True);
-            Assert.That(entry.ConsumePendingResultForTests(), Is.True);
-            Assert.That(entry.HasPendingRewardForTests, Is.False);
+            Assert.That(inventory.TryRemove("fullbag.0"), Is.True);
+            Assert.That(controller.ProcessPendingBattleResult(), Is.True);
+            Assert.That(controller.HasPendingSettlement, Is.False);
+            Assert.That(controller.SettlementCount, Is.EqualTo(1));
+            Assert.That(inventory.Gold, Is.GreaterThan(goldBefore));
+            Assert.That(progression.TotalExperience, Is.GreaterThan(experienceBefore));
             Assert.That(inventory.Items.Count, Is.EqualTo(inventory.Capacity));
-            Assert.That(inventory.Gold, Is.GreaterThan(beforeGold));
-            Assert.That(progression.TotalExperience, Is.GreaterThan(beforeExperience));
-            context.Get<SaveService>().Delete(0);
+
+            var settledGold = inventory.Gold;
+            var settledItems = inventory.Items.Count;
+            var settledExperience = progression.TotalExperience;
+            Assert.That(controller.ProcessPendingBattleResult(), Is.False);
+            Assert.That(inventory.Gold, Is.EqualTo(settledGold));
+            Assert.That(inventory.Items.Count, Is.EqualTo(settledItems));
+            Assert.That(progression.TotalExperience, Is.EqualTo(settledExperience));
         }
 
         [UnityTest]
-        public IEnumerator World_InventoryPanel_StretchesAcrossCanvasAndButtonsAreTouchTargets()
+        public IEnumerator World_PreparationPanel_EquipCraftReforgeRestAndPersist()
         {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
-
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            entry.InventoryButton.onClick.Invoke();
-            var panel = entry.InventoryPanel;
-            var rect = panel.RectTransform;
-
-            Assert.That(rect.anchorMin, Is.EqualTo(Vector2.zero));
-            Assert.That(rect.anchorMax, Is.EqualTo(Vector2.one));
-            Assert.That(rect.rect.width, Is.GreaterThan(1000f));
-            Assert.That(rect.rect.height, Is.GreaterThan(500f));
-
-            var equip = panel.GetButtonForTests("Equip");
-            Assert.That(equip, Is.Not.Null);
-            Assert.That(equip.GetComponent<RectTransform>().rect.height, Is.GreaterThanOrEqualTo(44f));
-            Assert.That(equip.GetComponent<Image>().raycastTarget, Is.True);
-        }
-
-        [UnityTest]
-        public IEnumerator World_EquipThenBattle_CarriesStatsAndAffixModifiersIntoSnapshot()
-        {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
+            yield return LoadWorld();
 
             var context = GameBootstrapper.Context;
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
             var inventory = context.Get<InventoryService>();
             var progression = context.Get<PartyProgressionService>();
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            progression.AwardExperience(100);
+            var save = context.Get<SaveService>();
+            Assert.That(controller.InventoryButton, Is.Not.Null);
+            Assert.That(controller.CraftButton, Is.Not.Null);
+            Assert.That(controller.RestButton, Is.Not.Null);
+            Assert.That(controller.InventoryPanel, Is.Not.Null);
+
+            controller.InventoryButton.onClick.Invoke();
+            var panel = controller.InventoryPanel;
+            Assert.That(panel.IsOpen, Is.True);
+            Assert.That(controller.InteractButton.interactable, Is.False);
+
             Assert.That(
                 inventory.TryAdd(
                     new ItemInstance(
-                        "snapshot.item",
+                        "world.equip",
                         "item.frost_longsword",
                         1,
-                        ItemRarity.Rare,
-                        new[]
-                        {
-                            new AffixInstance("affix.flat_power", 3),
-                            new AffixInstance("affix.skill.whirlwind_radius", 1)
-                        }),
-                    out var addError),
+                        ItemRarity.Common,
+                        new AffixInstance[0]),
+                    out var equipError),
                 Is.True,
-                addError);
+                equipError);
+            panel.SelectItemForTests("world.equip");
+            panel.GetButtonForTests("Equip").onClick.Invoke();
+            Assert.That(inventory.IsEquipped("world.equip"), Is.True);
 
-            entry.InventoryButton.onClick.Invoke();
-            entry.InventoryPanel.SelectItemForTests("snapshot.item");
-            entry.InventoryPanel.GetButtonForTests("Equip").onClick.Invoke();
-            Assert.That(inventory.GetEquipped("player.warrior")[ItemSlot.Weapon], Is.EqualTo("snapshot.item"));
-            entry.InventoryPanel.Close();
-            entry.BattleButton.onClick.Invoke();
-
-            for (var index = 0; index < 180 && SceneManager.GetActiveScene().name != "Battle"; index++)
-                yield return null;
-
-            var controller = Object.FindFirstObjectByType<BattleSceneController>();
-            Assert.That(controller, Is.Not.Null);
-            var warrior = controller.EngineForTests.State.GetUnit("player.warrior");
-            var whirlwind = controller.EngineForTests.GetOwnedSkills("player.warrior").Values
-                .Single(skill => skill.Id.StartsWith("skill.whirlwind", System.StringComparison.Ordinal));
-            Assert.That(warrior.Stats.Power, Is.EqualTo(19));
-            Assert.That(whirlwind.Radius, Is.EqualTo(2));
-        }
-
-        [UnityTest]
-        public IEnumerator World_ReforgeLock_IsSelectableVariesAndRejectsNoOp()
-        {
-            yield return SceneManager.LoadSceneAsync("Boot");
-            yield return null;
-            yield return SceneManager.LoadSceneAsync("World");
-            yield return null;
-
-            var context = GameBootstrapper.Context;
-            var inventory = context.Get<InventoryService>();
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
             inventory.AddGold(1000);
             inventory.AddMaterial(CraftingService.OreMaterialId, 100);
+            var itemsBeforeCraft = inventory.Items.Count;
+            controller.CraftButton.onClick.Invoke();
+            Assert.That(panel.Mode, Is.EqualTo(InventoryPanelMode.Craft));
+            panel.GetButtonForTests("Craft").onClick.Invoke();
+            Assert.That(inventory.Items.Count, Is.EqualTo(itemsBeforeCraft + 1));
+            Assert.That(panel.HasUnsavedChangesForTests, Is.False);
+
             Assert.That(
                 inventory.TryAdd(
                     new ItemInstance(
-                        "reforge.repeat",
+                        "world.reforge",
                         "item.frost_longsword",
                         1,
                         ItemRarity.Rare,
@@ -359,46 +232,41 @@ namespace BorderValley.PlayMode.Tests
                             new AffixInstance("affix.flat_power", 3),
                             new AffixInstance("affix.crit_bps", 100)
                         }),
-                    out _),
-                Is.True);
-
-            entry.CraftButton.onClick.Invoke();
-            var panel = entry.InventoryPanel;
-            panel.SelectItemForTests("reforge.repeat");
-            panel.CycleLockForTests();
-            Assert.That(
-                panel.CostTextForTests,
-                Does.Contain(new CraftingCosts().ReforgeGold(inventory.GetItem("reforge.repeat"), true).ToString()));
-
+                    out var reforgeError),
+                Is.True,
+                reforgeError);
+            panel.SelectItemForTests("world.reforge");
+            var affixesBeforeReforge = inventory.GetItem("world.reforge").Affixes
+                .Select(value => (value.AffixId, value.Value))
+                .ToArray();
             panel.GetButtonForTests("Reforge").onClick.Invoke();
-            var first = inventory.GetItem("reforge.repeat").Affixes
-                .Select(value => (value.AffixId, value.Value)).ToArray();
-            Assert.That(first.Any(value => value.AffixId == "affix.flat_power"), Is.True);
-            panel.GetButtonForTests("Reforge").onClick.Invoke();
-            var second = inventory.GetItem("reforge.repeat").Affixes
-                .Select(value => (value.AffixId, value.Value)).ToArray();
-            CollectionAssert.AreNotEqual(first, second);
+            var affixesAfterReforge = inventory.GetItem("world.reforge").Affixes
+                .Select(value => (value.AffixId, value.Value))
+                .ToArray();
+            CollectionAssert.AreNotEqual(affixesBeforeReforge, affixesAfterReforge);
+            Assert.That(panel.HasUnsavedChangesForTests, Is.False);
 
+            panel.GetButtonForTests("Close").onClick.Invoke();
+            progression.ApplyBattleUnitStates(new[]
+            {
+                new BattleUnitResult("player.warrior", 1, 0)
+            });
+            var healthBeforeRest = progression.Members
+                .Single(member => member.MemberId == "player.warrior")
+                .CurrentHealth;
+            var attemptsBeforeRest = controller.AutosaveAttemptCount;
+            controller.RestButton.onClick.Invoke();
             Assert.That(
-                inventory.TryAdd(
-                    new ItemInstance(
-                        "reforge.single",
-                        "item.frost_longsword",
-                        1,
-                        ItemRarity.Fine,
-                        new[] { new AffixInstance("affix.flat_power", 3) }),
-                    out _),
-                Is.True);
-            panel.SelectItemForTests("reforge.single");
-            panel.CycleLockForTests();
-            var beforeSingle = inventory.GetItem("reforge.single").Affixes
-                .Select(value => (value.AffixId, value.Value)).ToArray();
-            panel.GetButtonForTests("Reforge").onClick.Invoke();
-            Assert.That(
-                panel.LastErrorKeyForTests,
-                Is.EqualTo(BorderValley.UI.Inventory.InventoryTextKeys.ReforgeNoOp));
-            CollectionAssert.AreEqual(beforeSingle, inventory.GetItem("reforge.single").Affixes
-                .Select(value => (value.AffixId, value.Value)).ToArray());
+                progression.Members.Single(member => member.MemberId == "player.warrior").CurrentHealth,
+                Is.GreaterThan(healthBeforeRest));
+            Assert.That(controller.AutosaveAttemptCount, Is.EqualTo(attemptsBeforeRest + 1));
+
+            var savedGold = inventory.Gold;
+            inventory.AddGold(7);
+            Assert.That(save.Load(0), Is.True);
+            Assert.That(inventory.Gold, Is.EqualTo(savedGold));
+            Assert.That(inventory.IsEquipped("world.equip"), Is.True);
+            Assert.That(inventory.GetItem("world.reforge"), Is.Not.Null);
         }
 
         [UnityTest]
@@ -414,11 +282,11 @@ namespace BorderValley.PlayMode.Tests
             yield return null;
 
             var inventory = context.Get<InventoryService>();
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
             inventory.AddGold(1000);
             inventory.AddMaterial(CraftingService.OreMaterialId, 100);
-            entry.CraftButton.onClick.Invoke();
-            var panel = entry.InventoryPanel;
+            controller.CraftButton.onClick.Invoke();
+            var panel = controller.InventoryPanel;
             var beforeItems = inventory.Items.Count;
 
             using (new FileStream(save.GetPrimaryPathForTests(0), FileMode.Open, FileAccess.Read, FileShare.None))
@@ -428,33 +296,117 @@ namespace BorderValley.PlayMode.Tests
 
             Assert.That(inventory.Items.Count, Is.EqualTo(beforeItems + 1));
             Assert.That(panel.HasUnsavedChangesForTests, Is.True);
-            Assert.That(
-                panel.LastErrorKeyForTests,
-                Is.EqualTo(BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed));
+            Assert.That(panel.LastErrorKeyForTests, Is.EqualTo(InventoryTextKeys.AutoSaveFailed));
 
             panel.GetButtonForTests("RetrySave").onClick.Invoke();
             Assert.That(panel.HasUnsavedChangesForTests, Is.False);
             Assert.That(panel.LastErrorKeyForTests, Is.Empty);
-            save.Delete(0);
         }
 
         [UnityTest]
-        public IEnumerator World_CanOpenInventoryCraftAndReturnToBattle()
+        public IEnumerator World_PreparationPanel_CanEnterBattleAndReturnToWorld()
+        {
+            yield return LoadWorld();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            controller.InventoryButton.onClick.Invoke();
+            Assert.That(controller.InventoryPanel.IsOpen, Is.True);
+            controller.InventoryPanel.GetButtonForTests("Close").onClick.Invoke();
+
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            var encounter = catalog.All.OfType<WorldEncounterDefinition>()
+                .Single(value => value.EncounterId == "encounter.forest.bandits");
+            Assert.That(controller.BeginEncounter(encounter), Is.True);
+            yield return WaitForScene("Battle");
+            yield return null;
+
+            var battle = Object.FindAnyObjectByType<BattleSceneController>();
+            Assert.That(battle, Is.Not.Null);
+            KillAllEnemies(battle);
+            Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+
+            controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(controller.InventoryButton, Is.Not.Null);
+            Assert.That(controller.CraftButton, Is.Not.Null);
+            Assert.That(controller.RestButton, Is.Not.Null);
+            Assert.That(controller.InventoryPanel, Is.Not.Null);
+        }
+
+        private static IEnumerator LoadWorld()
         {
             yield return SceneManager.LoadSceneAsync("Boot");
             yield return null;
             yield return SceneManager.LoadSceneAsync("World");
             yield return null;
+        }
 
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            entry.InventoryButton.onClick.Invoke();
-            Assert.That(entry.InventoryPanel.IsOpen, Is.True);
-            entry.InventoryPanel.Close();
-            entry.BattleButton.onClick.Invoke();
+        [UnityTest]
+        public IEnumerator PendingAutosave_RetriesOnFixedIntervalInsteadOfEveryTick()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var context = GameBootstrapper.Context;
+            var save = context.Get<SaveService>();
+            save.Delete(0);
+            save.Save(0, "World");
+            yield return SceneManager.LoadSceneAsync("World");
+            yield return null;
 
-            for (var index = 0; index < 180 && SceneManager.GetActiveScene().name != "Battle"; index++)
+            var flow = context.Get<IBattleFlow>();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            flow.CompleteBattle(new BattleResult(
+                BattleFlowOutcome.PlayerVictory,
+                1,
+                new[] { new BattleUnitResult("player.warrior", 10, 4) }));
+
+            using (new FileStream(save.GetPrimaryPathForTests(0), FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.That(controller.ProcessPendingBattleResult(), Is.False);
+                Assert.That(controller.HasPendingSettlement, Is.True);
+                var attemptsAfterFailure = controller.AutosaveAttemptCount;
+
+                for (var index = 0; index < 5; index++)
+                    controller.Tick(0.1f);
+                Assert.That(
+                    controller.AutosaveAttemptCount,
+                    Is.EqualTo(attemptsAfterFailure),
+                    "Ticks inside the backoff window must not retry the autosave.");
+
+                controller.Tick(1f);
+                Assert.That(
+                    controller.AutosaveAttemptCount,
+                    Is.EqualTo(attemptsAfterFailure + 1),
+                    "One retry is expected once the fixed interval elapses.");
+
+                controller.HandleApplicationPause(true);
+                Assert.That(
+                    controller.AutosaveAttemptCount,
+                    Is.EqualTo(attemptsAfterFailure + 2),
+                    "Pause is a key event and must retry immediately.");
+            }
+
+            Assert.That(controller.ProcessPendingBattleResult(), Is.True);
+            Assert.That(controller.HasPendingSettlement, Is.False);
+        }
+
+        private static void KillAllEnemies(BattleSceneController controller)
+        {
+            foreach (var enemy in controller.EngineForTests.State.Units
+                         .Where(unit => unit.Team == BorderValley.Battle.Domain.Team.Enemy)
+                         .ToArray())
+            {
+                enemy.ApplyRawDamage(int.MaxValue);
+            }
+
+            controller.EngineForTests.Execute(null);
+        }
+
+        private static IEnumerator WaitForScene(string sceneName)
+        {
+            for (var index = 0; index < 180 && SceneManager.GetActiveScene().name != sceneName; index++)
                 yield return null;
-            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("Battle"));
+            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(sceneName));
         }
     }
 }

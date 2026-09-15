@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ccb04e6be4d747e48940392973c53691, type: 3}
+  m_Name: encounter.crypt.boss
+  m_EditorClassIdentifier: BorderValley.Data::BorderValley.Data.World.WorldEncounterDefinition
+  id: encounter.crypt.boss
+  encounterId: encounter.crypt.boss
+  scenarioId: core
+  enemyDefinitionIds:
+  - enemy.crypt_boss
+  rewardTableId: loot.bandit.core
+  goldReward: 100
+  experienceReward: 120
+  position: {x: 18, y: 13}
+  triggerRadius: 1.4
+  repeatable: 0
+  requiredEventId:
+  completionEventId: event.encounter.crypt.boss.defeated

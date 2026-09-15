@@ -2,13 +2,80 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
+[assembly: InternalsVisibleTo("BorderValley.EditModeTests")]
+
 namespace BorderValley.Core.Persistence
 {
+    internal interface ISaveFileCommitOperations
+    {
+        void Copy(string source, string destination, bool overwrite);
+        void Delete(string path);
+        void Move(string source, string destination, bool overwrite);
+        void Replace(string source, string destination, string backup);
+    }
+
+    internal sealed class SystemSaveFileCommitOperations : ISaveFileCommitOperations
+    {
+        private const uint MoveFileReplaceExisting = 0x1;
+        private const uint MoveFileWriteThrough = 0x8;
+
+        public void Copy(string source, string destination, bool overwrite) =>
+            File.Copy(source, destination, overwrite);
+
+        public void Delete(string path) => File.Delete(path);
+
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        public void Move(string source, string destination, bool overwrite)
+        {
+            if (!overwrite)
+            {
+                File.Move(source, destination);
+                return;
+            }
+
+            if (MoveFileEx(
+                    source,
+                    destination,
+                    MoveFileReplaceExisting | MoveFileWriteThrough))
+            {
+                return;
+            }
+
+            throw new IOException(
+                "MoveFileEx failed with Win32 error " + Marshal.GetLastWin32Error() + ".");
+        }
+#else
+        public void Move(string source, string destination, bool overwrite)
+        {
+            if (!overwrite || !File.Exists(destination))
+            {
+                File.Move(source, destination);
+                return;
+            }
+
+            File.Replace(source, destination, null);
+        }
+#endif
+
+        public void Replace(string source, string destination, string backup) =>
+            File.Replace(source, destination, backup);
+
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool MoveFileEx(
+            string existingFileName,
+            string newFileName,
+            uint flags);
+#endif
+    }
+
     public sealed class SaveService
     {
         private enum SaveFileState
@@ -21,15 +88,34 @@ namespace BorderValley.Core.Persistence
 
         private readonly string root;
         private readonly IReadOnlyDictionary<string, ISaveParticipant> participants;
+        private readonly ISaveFileCommitOperations commitOperations;
 
         public SaveService(string root, IEnumerable<ISaveParticipant> participants)
+            : this(root, participants, new SystemSaveFileCommitOperations())
+        {
+        }
+
+        internal SaveService(
+            string root,
+            IEnumerable<ISaveParticipant> participants,
+            ISaveFileCommitOperations commitOperations)
         {
             this.root = root ?? throw new ArgumentNullException(nameof(root));
             this.participants = participants.ToDictionary(item => item.Key, StringComparer.Ordinal);
+            this.commitOperations = commitOperations ?? throw new ArgumentNullException(nameof(commitOperations));
             Directory.CreateDirectory(root);
         }
 
-        public bool HasSave(int slot) => File.Exists(GetPrimaryPath(slot));
+        public bool HasSave(int slot)
+        {
+            foreach (var path in GetRecoveryPaths(slot))
+            {
+                if (File.Exists(path))
+                    return true;
+            }
+
+            return false;
+        }
         public string GetPrimaryPathForTests(int slot) => GetPrimaryPath(slot);
 
         public void Save(int slot, string sceneName)
@@ -65,7 +151,7 @@ namespace BorderValley.Core.Persistence
                 switch (primaryState)
                 {
                     case SaveFileState.Missing:
-                        File.Move(temporary, primary);
+                        commitOperations.Move(temporary, primary, false);
                         break;
                     case SaveFileState.Valid:
                         if (FilesHaveSamePayload(temporary, primary))
@@ -73,11 +159,21 @@ namespace BorderValley.Core.Persistence
                             TryDeleteFile(temporary);
                             break;
                         }
-                        File.Replace(temporary, primary, backup);
+
+                        try
+                        {
+                            commitOperations.Replace(temporary, primary, backup);
+                        }
+                        catch (Exception exception) when (
+                            exception is UnauthorizedAccessException ||
+                            exception is PlatformNotSupportedException ||
+                            exception is IOException)
+                        {
+                            ReplaceWithValidatedBackup(temporary, primary, backup);
+                        }
                         break;
                     case SaveFileState.Invalid:
-                        File.Delete(primary);
-                        File.Move(temporary, primary);
+                        ReplaceInvalidPrimary(temporary, primary);
                         break;
                     case SaveFileState.Unreadable:
                         throw primaryReadException ?? new IOException(
@@ -91,12 +187,19 @@ namespace BorderValley.Core.Persistence
                 TryDeleteFile(temporary);
                 throw;
             }
+
+            CleanupPreviousSnapshots(primary, backup);
         }
 
         public bool Load(int slot)
         {
-            var primary = GetPrimaryPath(slot);
-            return TryRestoreFile(primary) || TryRestoreFile(primary + ".bak");
+            foreach (var path in GetRecoveryPaths(slot))
+            {
+                if (TryRestoreFile(path))
+                    return true;
+            }
+
+            return false;
         }
 
         public void Delete(int slot)
@@ -106,7 +209,10 @@ namespace BorderValley.Core.Persistence
             {
                 primary,
                 primary + ".bak",
+                primary + ".bak.tmp",
+                primary + ".bak.previous",
                 primary + ".tmp",
+                primary + ".previous",
                 primary + ".sha256",
                 primary + ".bak.sha256"
             })
@@ -145,6 +251,7 @@ namespace BorderValley.Core.Persistence
 
                 try
                 {
+                    ApplySchemaMigration(data);
                     foreach (var participant in participants.Values)
                     {
                         participant.Reset();
@@ -193,6 +300,25 @@ namespace BorderValley.Core.Persistence
             }
         }
 
+        private void ApplySchemaMigration(SaveGameData data)
+        {
+            if (data.SchemaVersion >= SaveGameData.CurrentSchemaVersion)
+                return;
+
+            // Schema 1 predates the narrative participant. Participants absent from a legacy
+            // payload keep their default (post-reset) state; existing participants are preserved.
+            foreach (var participant in participants.Values)
+            {
+                if (data.Participants.ContainsKey(participant.Key))
+                    continue;
+
+                participant.Reset();
+                data.Participants[participant.Key] = participant.Capture();
+            }
+
+            data.SchemaVersion = SaveGameData.CurrentSchemaVersion;
+        }
+
         private SaveFileState InspectSaveFile(string path, out Exception readException)
         {
             readException = null;
@@ -228,7 +354,13 @@ namespace BorderValley.Core.Persistence
             if (!string.Equals(ComputeChecksum(payload), checksum, StringComparison.Ordinal)) return null;
 
             var data = JsonConvert.DeserializeObject<SaveGameData>(payload);
-            if (data == null || data.SchemaVersion != SaveGameData.CurrentSchemaVersion) return null;
+            if (data == null ||
+                data.SchemaVersion < 1 ||
+                data.SchemaVersion > SaveGameData.CurrentSchemaVersion)
+            {
+                return null;
+            }
+
             return data;
         }
 
@@ -251,14 +383,198 @@ namespace BorderValley.Core.Persistence
                        JObject.FromObject(rightData.Participants));
         }
 
-        private static void TryDeleteFile(string path)
+        private void TryDeleteFile(string path)
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
+                if (File.Exists(path)) commitOperations.Delete(path);
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+
+        private IEnumerable<string> GetRecoveryPaths(int slot)
+        {
+            var primary = GetPrimaryPath(slot);
+            yield return primary;
+            yield return primary + ".bak";
+            yield return primary + ".previous";
+            yield return primary + ".bak.previous";
+        }
+
+        private void CleanupPreviousSnapshots(string primary, string backup)
+        {
+            CleanupPreviousSnapshot(primary + ".previous");
+            CleanupPreviousSnapshot(backup + ".previous");
+        }
+
+        private void CleanupPreviousSnapshot(string path)
+        {
+            TryDeleteFile(path);
+            if (!File.Exists(path))
+                return;
+
+            var quarantine = path + ".stale." + Guid.NewGuid().ToString("N");
+            try
+            {
+                commitOperations.Move(path, quarantine, false);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            TryDeleteFile(quarantine);
+        }
+
+        private void ReplaceWithValidatedBackup(
+            string temporary,
+            string primary,
+            string backup)
+        {
+            // EFS can reject replace-existing APIs, so every rename below targets a
+            // vacant path and leaves a complete previous snapshot for recovery.
+            var backupTemporary = backup + ".tmp";
+            var previousBackup = backup + ".previous";
+            var previousPrimary = primary + ".previous";
+            var hadBackup = File.Exists(backup);
+            var previousBackupMoved = false;
+            var backupUpdated = false;
+            var primaryMoved = false;
+            string preservedPreviousBackup = null;
+            string preservedPreviousPrimary = null;
+
+            TryDeleteFile(backupTemporary);
+
+            try
+            {
+                preservedPreviousBackup = PreservePreviousSnapshot(previousBackup);
+                preservedPreviousPrimary = PreservePreviousSnapshot(previousPrimary);
+
+                commitOperations.Copy(primary, backupTemporary, false);
+                var backupState = InspectSaveFile(backupTemporary, out var backupReadException);
+                if (backupState != SaveFileState.Valid)
+                {
+                    if (backupState == SaveFileState.Unreadable && backupReadException != null)
+                        throw backupReadException;
+                    throw new IOException("Backup copy failed validation.");
+                }
+
+                if (hadBackup)
+                {
+                    commitOperations.Move(backup, previousBackup, false);
+                    previousBackupMoved = true;
+                }
+
+                commitOperations.Move(backupTemporary, backup, false);
+                backupUpdated = true;
+
+                commitOperations.Move(primary, previousPrimary, false);
+                primaryMoved = true;
+                commitOperations.Move(temporary, primary, false);
+
+                TryDeleteFile(previousBackup);
+                TryDeleteFile(previousPrimary);
+                CleanupPreservedSnapshot(preservedPreviousBackup);
+                CleanupPreservedSnapshot(preservedPreviousPrimary);
+            }
+            catch
+            {
+                if (primaryMoved)
+                    TryMove(previousPrimary, primary);
+
+                if (backupUpdated)
+                {
+                    TryDeleteFile(backup);
+                    if (previousBackupMoved)
+                        TryMove(previousBackup, backup);
+                }
+                else if (previousBackupMoved)
+                    TryMove(previousBackup, backup);
+
+                RestorePreservedSnapshot(preservedPreviousPrimary, previousPrimary);
+                RestorePreservedSnapshot(preservedPreviousBackup, previousBackup);
+                throw;
+            }
+            finally
+            {
+                TryDeleteFile(backupTemporary);
+            }
+        }
+
+        private void TryMove(string source, string destination)
+        {
+            try
+            {
+                if (File.Exists(source))
+                    commitOperations.Move(source, destination, false);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        private string PreservePreviousSnapshot(string path)
+        {
+            if (!File.Exists(path))
+                return null;
+
+            var preserved = path + ".preserve." + Guid.NewGuid().ToString("N");
+            try
+            {
+                commitOperations.Move(path, preserved, false);
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException)
+            {
+                throw new IOException("Failed to preserve recovery snapshot.", exception);
+            }
+
+            return preserved;
+        }
+
+        private void RestorePreservedSnapshot(string preserved, string original)
+        {
+            if (string.IsNullOrWhiteSpace(preserved) || !File.Exists(preserved))
+                return;
+
+            TryDeleteFile(original);
+            TryMove(preserved, original);
+        }
+
+        private void CleanupPreservedSnapshot(string preserved)
+        {
+            if (!string.IsNullOrWhiteSpace(preserved))
+                CleanupPreviousSnapshot(preserved);
+        }
+
+        private void ReplaceInvalidPrimary(string temporary, string primary)
+        {
+            var previousPrimary = primary + ".previous";
+            var invalidTransaction = primary + ".invalid." + Guid.NewGuid().ToString("N");
+            var invalidPrimaryMoved = false;
+            var newPrimaryCommitted = false;
+
+            try
+            {
+                commitOperations.Move(primary, invalidTransaction, false);
+                invalidPrimaryMoved = true;
+                commitOperations.Move(temporary, primary, false);
+                newPrimaryCommitted = true;
+
+                TryDeleteFile(previousPrimary);
+                TryDeleteFile(invalidTransaction);
+            }
+            catch
+            {
+                if (!newPrimaryCommitted && invalidPrimaryMoved)
+                    TryMove(invalidTransaction, primary);
+                throw;
+            }
         }
 
         private static string ComputeChecksum(string value)

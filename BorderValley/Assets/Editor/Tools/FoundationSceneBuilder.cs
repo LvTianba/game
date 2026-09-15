@@ -1,9 +1,9 @@
 using BorderValley.Core;
 using BorderValley.Data;
 using BorderValley.Inventory;
+using BorderValley.Narrative;
 using BorderValley.UI;
-using BorderValley.UI.Battle;
-using BorderValley.World;
+using BorderValley.UI.World;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -20,35 +20,34 @@ namespace BorderValley.Editor
         {
             System.IO.Directory.CreateDirectory("Assets/Scenes");
             System.IO.Directory.CreateDirectory("Assets/Resources");
-            EquipmentContentBuilder.Build();
+            WorldContentBuilder.Build();
 
             const string catalogPath = "Assets/Resources/ContentCatalog.asset";
             var catalog = AssetDatabase.LoadAssetAtPath<ContentCatalog>(catalogPath);
             if (catalog == null)
-            {
-                catalog = ScriptableObject.CreateInstance<ContentCatalog>();
-                AssetDatabase.CreateAsset(catalog, catalogPath);
-            }
+                throw new System.InvalidOperationException("WorldContentBuilder did not create ContentCatalog.");
 
             var boot = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var services = new GameObject("BootServices");
             var validator = services.AddComponent<ContentRuntimeValidator>();
             var bootstrapper = services.AddComponent<GameBootstrapper>();
             var inventoryInstaller = services.AddComponent<InventoryBootstrapInstaller>();
+            var narrativeInstaller = services.AddComponent<NarrativeBootstrapInstaller>();
             var bootSerialized = new SerializedObject(bootstrapper);
             var preflightProperty = bootSerialized.FindProperty("preflightChecks");
             preflightProperty.arraySize = 1;
             preflightProperty.GetArrayElementAtIndex(0).objectReferenceValue = validator;
             var serviceInstallersProperty = bootSerialized.FindProperty("serviceInstallers");
-            serviceInstallersProperty.arraySize = 1;
+            serviceInstallersProperty.arraySize = 2;
             serviceInstallersProperty.GetArrayElementAtIndex(0).objectReferenceValue = inventoryInstaller;
+            serviceInstallersProperty.GetArrayElementAtIndex(1).objectReferenceValue = narrativeInstaller;
             bootSerialized.ApplyModifiedPropertiesWithoutUndo();
             EditorSceneManager.SaveScene(boot, "Assets/Scenes/Boot.unity");
 
             var menu = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var canvas = CreateCanvas(menu);
             var button = CreateButton(canvas.transform);
-            var eventSystem = CreateEventSystem(menu);
+            CreateEventSystem(menu);
             var component = canvas.AddComponent<MainMenuView>();
             var serialized = new SerializedObject(component);
             serialized.FindProperty("newGameButton").objectReferenceValue = button;
@@ -57,10 +56,10 @@ namespace BorderValley.Editor
 
             var world = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             CreateMainCamera(world);
-            var worldPlaceholder = new GameObject("WorldPlaceholder");
-            worldPlaceholder.AddComponent<WorldPlaceholder>();
-            var battleEntry = new GameObject("WorldBattleEntry");
-            battleEntry.AddComponent<WorldBattleEntryView>();
+            CreateEventSystem(world);
+            var controller = new GameObject("WorldExplorationController");
+            SceneManager.MoveGameObjectToScene(controller, world);
+            controller.AddComponent<WorldExplorationController>();
             EditorSceneManager.SaveScene(world, "Assets/Scenes/World.unity");
 
             BattleSceneBuilder.BuildScene();
@@ -83,6 +82,7 @@ namespace BorderValley.Editor
 
             var camera = cameraGameObject.GetComponent<Camera>();
             camera.orthographic = true;
+            camera.orthographicSize = 9f;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 1f);
             return cameraGameObject;

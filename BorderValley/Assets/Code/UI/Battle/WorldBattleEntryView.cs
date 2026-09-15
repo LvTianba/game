@@ -6,9 +6,13 @@ using BorderValley.Core.BattleFlow;
 using BorderValley.Core.Persistence;
 using BorderValley.Core.Random;
 using BorderValley.Core.SceneManagement;
+using BorderValley.Data;
 using BorderValley.Data.Items;
+using BorderValley.Data.World;
 using BorderValley.Inventory;
+using BorderValley.Narrative;
 using BorderValley.UI.Inventory;
+using BorderValley.World;
 using InventoryTextKeys = BorderValley.UI.Inventory.InventoryTextKeys;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -31,6 +35,10 @@ namespace BorderValley.UI.Battle
         private EconomyService economy;
         private ItemDropTableDefinition banditDropTable;
         private SaveService saveService;
+        private QuestService questService;
+        private NarrativeStateService narrativeState;
+        private IReadOnlyDictionary<string, ItemDropTableDefinition> rewardTables;
+        private IReadOnlyDictionary<string, WorldEncounterDefinition> encounters;
         private PendingBattleReward pendingReward;
 
         public Button InventoryButton { get; private set; }
@@ -43,6 +51,7 @@ namespace BorderValley.UI.Battle
         public InventoryPanelView InventoryPanel { get; private set; }
         public bool HasPendingRewardForTests => pendingReward != null;
         public int SettlementCountForTests { get; private set; }
+        public int SaveAttemptCountForTests { get; private set; }
 
         private void Start()
         {
@@ -65,8 +74,11 @@ namespace BorderValley.UI.Battle
                 GameBootstrapper.Context.TryGet(out economy);
                 GameBootstrapper.Context.TryGet(out banditDropTable);
                 GameBootstrapper.Context.TryGet(out saveService);
+                GameBootstrapper.Context.TryGet(out questService);
+                GameBootstrapper.Context.TryGet(out narrativeState);
             }
 
+            LoadSettlementContent();
             var canvasObject = CreateCanvas();
             CreateEventSystemIfMissing();
             CreateButtons(canvasObject.transform);
@@ -183,70 +195,28 @@ namespace BorderValley.UI.Battle
 
             try
             {
-                if (pending.Result.Outcome == BattleFlowOutcome.PlayerVictory)
+                if (!pending.Settled)
                 {
-                    if (!pending.RewardsPrepared)
+                    var encounter = ResolveEncounter(pending.Result.Context);
+                    var service = CreateSettlementService(pending.Result);
+                    SettlementCountForTests++;
+                    if (!service.Settle(pending.Result, encounter, out var settlement))
                     {
-                        if (inventory == null || lootGenerator == null || banditDropTable == null)
-                            throw new InvalidOperationException("Reward services are unavailable.");
-                        var rewardSeed = $"reward:{progression.SafePointId}:{pending.Result.Rounds}:{progression.TotalExperience}";
-                        var random = RandomSourceFactory.FromSeed(rewardSeed);
-                        pending.Loot = lootGenerator.Generate(
-                            "loot." + System.Guid.NewGuid().ToString("N"),
-                            banditDropTable,
-                            progression.HighestLevel,
-                            random);
-                        pending.RewardsPrepared = true;
+                        ShowResult(settlement.ErrorKey);
+                        return false;
                     }
 
-                    if (!pending.LootAdded)
-                    {
-                        if (inventory.Items.Count >= inventory.Capacity)
-                        {
-                            ShowResult(InventoryTextKeys.BagFull);
-                            return false;
-                        }
-
-                        if (!inventory.TryAdd(pending.Loot, out var addError))
-                        {
-                            ShowResult(addError);
-                            return false;
-                        }
-
-                        pending.LootAdded = true;
-                    }
-
-                    if (!pending.RewardsApplied)
-                    {
-                        progression.ApplyBattleUnitStates(pending.Result.UnitStates);
-                        inventory.AddGold(25 + pending.Result.Rounds * 5);
-                        progression.AwardExperience(35 + pending.Result.Rounds * 5);
-                        pending.RewardsApplied = true;
-                    }
-                }
-                else if (pending.Result.Outcome == BattleFlowOutcome.EnemyVictory)
-                {
-                    if (!pending.RewardsApplied)
-                    {
-                        progression.ApplyBattleUnitStates(pending.Result.UnitStates);
-                        progression.ReturnToSafePoint();
-                        pending.RewardsApplied = true;
-                    }
-                }
-                else
-                {
-                    pendingReward = null;
-                    return false;
+                    pending.Settlement = settlement;
+                    pending.Settled = true;
                 }
 
-                if (!TrySaveWorld())
+                if (pending.Settlement.RequiresAutosave && !TrySaveWorld())
                 {
                     ShowResult(InventoryTextKeys.AutoSaveFailed);
                     return false;
                 }
 
                 pendingReward = null;
-                SettlementCountForTests++;
                 RefreshResultAndPartyLabels(pending.Result, false);
                 return true;
             }
@@ -257,6 +227,89 @@ namespace BorderValley.UI.Battle
             }
         }
 
+        private WorldBattleSettlementService CreateSettlementService(BattleResult result)
+        {
+            if (inventory == null ||
+                progression == null ||
+                lootGenerator == null)
+            {
+                throw new InvalidOperationException("Battle settlement services are unavailable.");
+            }
+
+            var contextId = result.Context?.EncounterId ?? "legacy";
+            var rewardSeed = string.Join(
+                ":",
+                "world-battle",
+                contextId,
+                result.Rounds,
+                progression.SafePointId,
+                progression.TotalExperience,
+                inventory.Items.Count);
+            return new WorldBattleSettlementService(
+                inventory,
+                progression,
+                lootGenerator,
+                questService,
+                narrativeState,
+                ResolveRewardTable,
+                RandomSourceFactory.FromSeed(rewardSeed),
+                banditDropTable);
+        }
+
+        private void LoadSettlementContent()
+        {
+            var tables = new Dictionary<string, ItemDropTableDefinition>(StringComparer.Ordinal);
+            var encounterIndex = new Dictionary<string, WorldEncounterDefinition>(StringComparer.Ordinal);
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            if (catalog != null)
+            {
+                foreach (var definition in catalog.All)
+                {
+                    switch (definition)
+                    {
+                        case ItemDropTableDefinition table:
+                            tables[table.Id] = table;
+                            break;
+                        case WorldEncounterDefinition encounter:
+                            encounterIndex[encounter.EncounterId] = encounter;
+                            break;
+                    }
+                }
+            }
+
+            rewardTables = tables;
+            encounters = encounterIndex;
+        }
+
+        private WorldEncounterDefinition ResolveEncounter(BattleContext context)
+        {
+            if (context == null ||
+                string.IsNullOrWhiteSpace(context.EncounterId) ||
+                encounters == null)
+            {
+                return null;
+            }
+
+            return encounters.TryGetValue(context.EncounterId, out var encounter)
+                ? encounter
+                : null;
+        }
+
+        private ItemDropTableDefinition ResolveRewardTable(string rewardTableId)
+        {
+            if (!string.IsNullOrWhiteSpace(rewardTableId) &&
+                rewardTables != null &&
+                rewardTables.TryGetValue(rewardTableId, out var table))
+            {
+                return table;
+            }
+
+            return banditDropTable != null &&
+                   (string.IsNullOrWhiteSpace(rewardTableId) ||
+                    string.Equals(rewardTableId, banditDropTable.Id, StringComparison.Ordinal))
+                ? banditDropTable
+                : null;
+        }
         private void ShowResult(string key)
         {
             if (ResultLabel != null)
@@ -272,14 +325,12 @@ namespace BorderValley.UI.Battle
             }
 
             public BattleResult Result { get; }
-            public ItemInstance Loot { get; set; }
-            public bool RewardsPrepared { get; set; }
-            public bool LootAdded { get; set; }
-            public bool RewardsApplied { get; set; }
+            public WorldBattleSettlementResult Settlement { get; set; }
+            public bool Settled { get; set; }
         }
-
         private bool TrySaveWorld()
         {
+            SaveAttemptCountForTests++;
             if (saveService == null)
                 return false;
 

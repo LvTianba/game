@@ -1,5 +1,4 @@
 using System;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using BorderValley.Core.Combat;
@@ -98,6 +97,18 @@ namespace BorderValley.Inventory.Tests
 
             Assert.That(presenter.LastErrorKey, Is.Empty);
             Assert.That(service.IsEquipped("warrior.item"), Is.True);
+        }
+
+        [Test]
+        public void EquipSelected_WhenSuccessful_InvokesSaveCallback()
+        {
+            var saves = 0;
+            var presenter = Presenter(_ => saves++);
+            presenter.Select("warrior.item");
+
+            Assert.That(presenter.EquipSelected("class.warrior"), Is.True);
+            Assert.That(service.IsEquipped("warrior.item"), Is.True);
+            Assert.That(saves, Is.EqualTo(1));
         }
 
         [Test]

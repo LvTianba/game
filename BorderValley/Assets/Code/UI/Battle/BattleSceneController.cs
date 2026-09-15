@@ -19,6 +19,7 @@ namespace BorderValley.UI.Battle
         private BattleUiPresenter presenter;
         private BattleGridView gridView;
         private BattleHudView hudView;
+        private BattleContext battleContext;
         private string returnScene = string.Empty;
         private Coroutine enemyTurnRoutine;
         private bool enemyTurnLoopActive;
@@ -45,17 +46,18 @@ namespace BorderValley.UI.Battle
 
             BattlePartySnapshot partySnapshot = null;
             var seed = DebugSeed;
+            string scenarioId = null;
             if (flow.TryTakeRequest(out var request))
             {
                 seed = request.Seed;
+                scenarioId = request.ScenarioId;
                 returnScene = request.ReturnScene;
                 partySnapshot = request.PartySnapshot;
+                battleContext = request.Context;
             }
 
             presenter = new BattleUiPresenter(
-                partySnapshot == null
-                    ? BattleScenarioFactory.CreateCoreScenario()
-                    : BattleScenarioFactory.CreateCoreScenario(partySnapshot),
+                BattleScenarioFactory.CreateScenario(partySnapshot, battleContext, scenarioId),
                 RandomSourceFactory.FromSeed(seed));
 
             var root = new GameObject(
@@ -118,12 +120,21 @@ namespace BorderValley.UI.Battle
             continueHandled = true;
             var unitStates = presenter.Engine.State.Units
                 .Where(unit => unit.Team == Team.Player)
-                .Select(unit => new BattleUnitResult(unit.Id, unit.Health, unit.Mana))
+                .Select(unit => new BattleUnitResult(unit.Id, unit.DefinitionId, unit.Health, unit.Mana))
                 .ToArray();
+            var outcome = MapOutcome(presenter.Outcome);
+            var defeatedEnemyIds = outcome == BattleFlowOutcome.PlayerVictory
+                ? presenter.Engine.State.Units
+                    .Where(unit => unit.Team == Team.Enemy && !unit.IsAlive)
+                    .Select(unit => unit.DefinitionId)
+                    .ToArray()
+                : Array.Empty<string>();
             flow.CompleteBattle(new BattleResult(
-                MapOutcome(presenter.Outcome),
+                outcome,
                 presenter.Engine.State.Round,
-                unitStates));
+                unitStates,
+                battleContext,
+                defeatedEnemyIds));
 
             if (string.IsNullOrWhiteSpace(returnScene) || GameBootstrapper.Context == null)
                 return;

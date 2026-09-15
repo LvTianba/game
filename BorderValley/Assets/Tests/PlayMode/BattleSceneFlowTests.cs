@@ -5,7 +5,10 @@ using BorderValley.Battle.Domain;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
 using BorderValley.Core.SceneManagement;
+using BorderValley.Data;
+using BorderValley.Data.World;
 using BorderValley.UI.Battle;
+using BorderValley.UI.World;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -22,23 +25,22 @@ namespace BorderValley.PlayModeTests
             yield return SceneManager.LoadSceneAsync("Boot");
             yield return null;
 
-            var menuButton = Object.FindFirstObjectByType<Button>();
+            var menuButton = Object.FindAnyObjectByType<Button>();
             Assert.That(menuButton, Is.Not.Null);
             menuButton.onClick.Invoke();
             yield return WaitForScene("World");
 
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            Assert.That(entry, Is.Not.Null);
-            Assert.That(entry.BattleButton, Is.Not.Null);
-            entry.BattleButton.onClick.Invoke();
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(controller.BeginEncounter(FindEncounter("encounter.forest.bandits")), Is.True);
             yield return WaitForScene("Battle");
 
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("Battle"));
-            Assert.That(Object.FindFirstObjectByType<BattleSceneController>(), Is.Not.Null);
+            Assert.That(Object.FindAnyObjectByType<BattleSceneController>(), Is.Not.Null);
         }
 
         [UnityTest]
-        public IEnumerator WorldBattleEntry_ConsumesAndDisplaysResultOnce()
+        public IEnumerator World_ConsumesLegacyBattleResultOnce()
         {
             yield return SceneManager.LoadSceneAsync("Boot");
             yield return null;
@@ -50,24 +52,22 @@ namespace BorderValley.PlayModeTests
             yield return SceneManager.LoadSceneAsync("World");
             yield return null;
 
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            Assert.That(entry, Is.Not.Null);
-            Assert.That(entry.ResultLabel.text, Is.EqualTo("battle.result.player_victory"));
-            Assert.That(
-                entry.BattleButton.GetComponentInChildren<Text>().text,
-                Is.EqualTo("battle.ui.enter_battle"));
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(controller.LastBattleResultKey, Is.EqualTo("battle.result.player_victory"));
+            Assert.That(controller.SettlementCount, Is.EqualTo(1));
 
             yield return SceneManager.LoadSceneAsync("World");
             yield return null;
 
-            entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            Assert.That(entry, Is.Not.Null);
-            Assert.That(entry.ResultLabel.text, Is.Empty);
+            controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(controller.LastBattleResultKey, Is.Empty);
             Assert.That(flow.TryTakeResult(out _), Is.False);
         }
 
         [UnityTest]
-        public IEnumerator WorldBattleEntry_DoubleTap_BeginsOneBattleAndLoad()
+        public IEnumerator World_EncounterDoubleTrigger_BeginsOneBattleAndLoad()
         {
             yield return SceneManager.LoadSceneAsync("Boot");
             yield return null;
@@ -80,13 +80,13 @@ namespace BorderValley.PlayModeTests
             yield return SceneManager.LoadSceneAsync("World");
             yield return null;
 
-            var entry = Object.FindFirstObjectByType<WorldBattleEntryView>();
-            Assert.That(entry, Is.Not.Null);
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(controller, Is.Not.Null);
+            var encounter = FindEncounter("encounter.forest.bandits");
 
-            entry.BattleButton.onClick.Invoke();
-            entry.BattleButton.onClick.Invoke();
-
-            Assert.That(entry.BattleButton.interactable, Is.False);
+            Assert.That(controller.BeginEncounter(encounter), Is.True);
+            Assert.That(controller.BeginEncounter(encounter), Is.False);
+            Assert.That(controller.InteractButton.interactable, Is.False);
             Assert.That(loader.LoadCount, Is.EqualTo(1));
 
             var flow = GameBootstrapper.Context.Get<IBattleFlow>();
@@ -95,6 +95,73 @@ namespace BorderValley.PlayModeTests
             Assert.That(flow.TryTakeRequest(out _), Is.False);
 
             GameBootstrapper.Context.Register<ISceneLoader>(originalLoader);
+        }
+
+        [UnityTest]
+        public IEnumerator BattleScene_EveryEncounter_UsesRequestedEnemyFormationAndReportsDefeatedEnemyIds()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+
+            var context = GameBootstrapper.Context;
+            var flow = context.Get<IBattleFlow>();
+            var originalLoader = context.Get<ISceneLoader>();
+            context.Register<ISceneLoader>(new RecordingSceneLoader());
+
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            var encounters = catalog.All
+                .OfType<WorldEncounterDefinition>()
+                .OrderBy(value => value.EncounterId, System.StringComparer.Ordinal)
+                .ToArray();
+
+            foreach (var encounter in encounters)
+            {
+                var party = context.Get<BorderValley.Inventory.PartyBattleSnapshotBuilder>()
+                    .BuildPartySnapshot();
+                flow.BeginBattle(BorderValley.World.WorldEncounterService.BuildRequest(
+                    encounter,
+                    party,
+                    "formation:" + encounter.EncounterId,
+                    "World"));
+
+                yield return SceneManager.LoadSceneAsync("Battle");
+                yield return null;
+
+                var controller = Object.FindAnyObjectByType<BattleSceneController>();
+                Assert.That(controller, Is.Not.Null, encounter.EncounterId);
+                var enemies = controller.EngineForTests.State.Units
+                    .Where(unit => unit.Team == Team.Enemy)
+                    .ToArray();
+                Assert.That(
+                    enemies.Select(unit => unit.DefinitionId),
+                    Is.EqualTo(encounter.EnemyDefinitionIds),
+                    encounter.EncounterId);
+                Assert.That(
+                    enemies.Select(unit => unit.Id),
+                    Is.Unique,
+                    encounter.EncounterId);
+
+                if (encounter.EncounterId == "encounter.crypt.boss")
+                {
+                    Assert.That(
+                        encounter.EnemyDefinitionIds,
+                        Is.EqualTo(new[] { "enemy.crypt_boss" }),
+                        "The boss encounter must use the unique boss definition.");
+                    Assert.That(enemies.Single().DefinitionId, Is.EqualTo("enemy.crypt_boss"));
+                }
+
+                KillAllEnemies(controller);
+                Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
+
+                Assert.That(flow.TryTakeResult(out var result), Is.True, encounter.EncounterId);
+                Assert.That(
+                    result.DefeatedEnemyIds,
+                    Is.EqualTo(encounter.EnemyDefinitionIds),
+                    encounter.EncounterId);
+            }
+
+            context.Register<ISceneLoader>(originalLoader);
         }
 
         [UnityTest]
@@ -214,6 +281,7 @@ namespace BorderValley.PlayModeTests
         public void BattleTextKeys_FormatHudValuesAsLocalizationKeys()
         {
             Assert.That(BattleTextKeys.Unit("unit.ranger"), Is.EqualTo("battle.unit.ranger"));
+            Assert.That(BattleTextKeys.Unit("enemy.bandit"), Is.EqualTo("battle.unit.bandit"));
             Assert.That(BattleTextKeys.Flag(false), Is.EqualTo("battle.ui.no"));
             Assert.That(BattleTextKeys.StatusKey(StatusType.Stunned), Is.EqualTo("battle.status.stunned"));
         }
@@ -276,6 +344,25 @@ namespace BorderValley.PlayModeTests
             Assert.That(enemyUnitId, Does.StartWith("enemy."));
             Assert.That(controller.ActiveUnitId, Does.StartWith("player."));
             Assert.That(controller.ActiveUnitId, Is.Not.EqualTo(enemyUnitId));
+        }
+
+        private static WorldEncounterDefinition FindEncounter(string encounterId)
+        {
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            return catalog.All.OfType<WorldEncounterDefinition>().Single(value => value.EncounterId == encounterId);
+        }
+
+        private static void KillAllEnemies(BattleSceneController controller)
+        {
+            foreach (var enemy in controller.EngineForTests.State.Units
+                         .Where(unit => unit.Team == Team.Enemy)
+                         .ToArray())
+            {
+                enemy.ApplyRawDamage(int.MaxValue);
+            }
+
+            controller.EngineForTests.Execute(null);
         }
 
         private sealed class RecordingSceneLoader : ISceneLoader

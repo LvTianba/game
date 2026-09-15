@@ -34,6 +34,9 @@ namespace BorderValley.UI.Battle
                 "unit.ranger" => "battle.unit.ranger",
                 "unit.mage" => "battle.unit.mage",
                 "unit.bandit" => "battle.unit.bandit",
+                "enemy.bandit" => "battle.unit.bandit",
+                "enemy.ranger" => "battle.unit.ranger",
+                "enemy.mage" => "battle.unit.mage",
                 _ => "battle.unit.unknown"
             };
 

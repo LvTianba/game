@@ -46,9 +46,18 @@ namespace BorderValley.Inventory
             return Math.Max(2, definition.BaseValue * item.ItemLevel * rarityMultiplier / 10 + affixValue);
         }
 
+        public int GetBuyPrice(ItemInstance item, int modifierBps) =>
+            Math.Max(2, ApplyModifier(GetBuyPrice(item), modifierBps));
+
         public int GetSellPrice(ItemInstance item) => Math.Max(1, GetBuyPrice(item) * 2 / 5);
 
-        public bool TrySell(string instanceId, out string error)
+        public int GetSellPrice(ItemInstance item, int modifierBps) =>
+            Math.Max(1, ApplyModifier(GetSellPrice(item), modifierBps));
+
+        public bool TrySell(string instanceId, out string error) =>
+            TrySell(instanceId, 10000, out error);
+
+        public bool TrySell(string instanceId, int modifierBps, out string error)
         {
             if (!TryGetItem(instanceId, out var item))
             {
@@ -74,7 +83,7 @@ namespace BorderValley.Inventory
                 return false;
             }
 
-            var price = GetSellPrice(item);
+            var price = GetSellPrice(item, modifierBps);
             if (!inventory.TryRemove(instanceId))
             {
                 error = InventoryTextKeys.ItemMissing;
@@ -86,7 +95,10 @@ namespace BorderValley.Inventory
             return true;
         }
 
-        public bool TryBuy(ItemInstance item, out string error)
+        public bool TryBuy(ItemInstance item, out string error) =>
+            TryBuy(item, 10000, out error);
+
+        public bool TryBuy(ItemInstance item, int modifierBps, out string error)
         {
             if (item == null) throw new ArgumentNullException(nameof(item));
             if (!definitions.TryGetValue(item.ItemDefinitionId, out var definition))
@@ -101,7 +113,7 @@ namespace BorderValley.Inventory
                 return false;
             }
 
-            var price = GetBuyPrice(item);
+            var price = GetBuyPrice(item, modifierBps);
             if (!inventory.TrySpendGold(price))
             {
                 error = InventoryTextKeys.NotEnoughGold;
@@ -116,6 +128,13 @@ namespace BorderValley.Inventory
 
             error = string.Empty;
             return true;
+        }
+
+        private static int ApplyModifier(int price, int modifierBps)
+        {
+            if (modifierBps < 0) throw new ArgumentOutOfRangeException(nameof(modifierBps));
+            var adjusted = (long)price * modifierBps / 10000L;
+            return adjusted > int.MaxValue ? int.MaxValue : (int)adjusted;
         }
 
         private bool TryGetItem(string instanceId, out ItemInstance item)

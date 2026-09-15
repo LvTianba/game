@@ -130,13 +130,17 @@ namespace BorderValley.UI.Inventory
                 return Fail(BorderValley.UI.Inventory.InventoryTextKeys.ItemMissing);
             return SetResult(
                 inventory.TryEquip(SelectedInstanceId, memberId, classId, out var error),
-                error);
+                error,
+                persistChanges: true);
         }
 
         public bool Unequip(ItemSlot slot) => Unequip(SelectedMemberId, slot);
 
         public bool Unequip(string memberId, ItemSlot slot) =>
-            SetResult(inventory.TryUnequip(memberId, slot, out var error), error);
+            SetResult(
+                inventory.TryUnequip(memberId, slot, out var error),
+                error,
+                persistChanges: true);
 
         public bool DismantleSelected()
         {
@@ -149,7 +153,7 @@ namespace BorderValley.UI.Inventory
 
             SelectedInstanceId = null;
             LockedAffixId = null;
-            return Succeed(saveCraft: true);
+            return Succeed(persistChanges: true);
         }
 
         public bool ReforgeSelected(string lockedAffixId, IRandomSource random)
@@ -167,7 +171,7 @@ namespace BorderValley.UI.Inventory
 
             var result = crafting.Reforge(SelectedInstanceId, LockedAffixId, random);
             return result.Success
-                ? Succeed(saveCraft: true)
+                ? Succeed(persistChanges: true)
                 : Fail(result.Error);
         }
 
@@ -190,7 +194,7 @@ namespace BorderValley.UI.Inventory
 
             var result = crafting.Craft(instanceId, definition, classId, itemLevel, random);
             return result.Success
-                ? Succeed(saveCraft: true)
+                ? Succeed(persistChanges: true)
                 : Fail(result.Error);
         }
 
@@ -236,17 +240,17 @@ namespace BorderValley.UI.Inventory
                 progression.Changed -= Notify;
         }
 
-        private bool SetResult(bool success, string error)
+        private bool SetResult(bool success, string error, bool persistChanges = false)
         {
             if (success)
-                return Succeed();
+                return Succeed(persistChanges);
             return Fail(error);
         }
 
-        private bool Succeed(bool saveCraft = false)
+        private bool Succeed(bool persistChanges = false)
         {
             LastErrorKey = string.Empty;
-            if (saveCraft && save != null)
+            if (persistChanges && save != null)
             {
                 if (!TryInvokeSave())
                 {

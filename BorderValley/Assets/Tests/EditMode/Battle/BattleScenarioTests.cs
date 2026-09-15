@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BorderValley.Battle.Domain;
+using BorderValley.Core.BattleFlow;
 using BorderValley.Core.Random;
 using NUnit.Framework;
 
@@ -492,6 +493,125 @@ namespace BorderValley.Battle.Tests
                 BattleScenarioFactory.CreateCoreScenario(),
                 RandomSourceFactory.FromSeed(seed),
                 maxCommands: 200);
+        }
+
+        [Test]
+        public void CreateScenario_WithBattleContext_BuildsRequestedEnemyFormation()
+        {
+            var party = PartySnapshot();
+            var formations = new[]
+            {
+                new[] { "enemy.bandit" },
+                new[] { "enemy.bandit", "enemy.bandit" },
+                new[] { "enemy.ranger", "enemy.mage" },
+                new[] { "enemy.wolf", "enemy.wolf", "enemy.wolf" },
+                new[] { "enemy.crypt_boss" }
+            };
+
+            foreach (var enemyDefinitionIds in formations)
+            {
+                var context = new BattleContext(
+                    "encounter.test",
+                    "loot.test",
+                    10,
+                    10,
+                    enemyDefinitionIds,
+                    true);
+                var scenario = BattleScenarioFactory.CreateScenario(party, context);
+                var enemies = scenario.State.Units
+                    .Where(unit => unit.Team == Team.Enemy)
+                    .ToArray();
+                var label = string.Join(",", enemyDefinitionIds);
+
+                Assert.That(
+                    enemies.Select(unit => unit.DefinitionId),
+                    Is.EqualTo(enemyDefinitionIds),
+                    label);
+                Assert.That(enemies.Select(unit => unit.Id), Is.Unique, label);
+                Assert.That(enemies.Select(unit => unit.Position), Is.Unique, label);
+                Assert.That(
+                    scenario.State.Units.Count(unit => unit.Team == Team.Player),
+                    Is.EqualTo(party.Members.Count));
+                foreach (var enemy in enemies)
+                {
+                    Assert.That(scenario.UnitSkills.ContainsKey(enemy.Id), Is.True, enemy.Id);
+                    Assert.That(scenario.UnitSkills[enemy.Id], Is.Not.Empty, enemy.Id);
+                    foreach (var skillId in scenario.UnitSkills[enemy.Id])
+                        Assert.That(scenario.AllSkills.ContainsKey(skillId), Is.True, skillId);
+                }
+            }
+        }
+
+        [Test]
+        public void CreateScenario_EnemyDefinitionsHaveDeterministicStatsAndSkills()
+        {
+            var party = PartySnapshot();
+            var context = new BattleContext(
+                "encounter.test",
+                "loot.test",
+                0,
+                0,
+                new[] { "enemy.bandit", "enemy.ranger", "enemy.mage", "enemy.wolf", "enemy.crypt_boss" },
+                true);
+
+            var scenario = BattleScenarioFactory.CreateScenario(party, context);
+
+            AssertUnitStats(scenario, "enemy.bandit", 20, 0, 8, 3, 5, 0.05f, 1);
+            AssertUnitStats(scenario, "enemy.ranger", 18, 10, 10, 3, 7, 0.15f, 2);
+            AssertUnitStats(scenario, "enemy.mage", 15, 16, 11, 1, 5, 0.05f, 6);
+            AssertUnitStats(scenario, "enemy.wolf", 16, 0, 9, 2, 8, 0.1f, 1);
+            AssertUnitStats(scenario, "enemy.crypt_boss", 60, 24, 14, 6, 4, 0.1f, 5);
+
+            Assert.That(
+                scenario.State.GetUnit("enemy.crypt_boss").Stats.MaxHealth,
+                Is.GreaterThan(scenario.State.GetUnit("enemy.bandit").Stats.MaxHealth));
+            Assert.That(
+                scenario.UnitSkills["enemy.crypt_boss"],
+                Is.EquivalentTo(new[] { "skill.fireball", "skill.frost_nova", "skill.basic" }));
+            Assert.That(
+                scenario.UnitSkills["enemy.wolf"],
+                Is.EquivalentTo(new[] { "skill.basic" }));
+        }
+
+        [Test]
+        public void CreateScenario_WithoutContextEnemyIds_FallsBackToCoreFormation()
+        {
+            var party = PartySnapshot();
+            var scenario = BattleScenarioFactory.CreateScenario(
+                party,
+                new BattleContext("encounter.test", "loot.test", 0, 0, System.Array.Empty<string>(), true));
+
+            Assert.That(
+                scenario.State.Units
+                    .Where(unit => unit.Team == Team.Enemy)
+                    .Select(unit => unit.DefinitionId),
+                Is.EqualTo(new[] { "enemy.bandit", "enemy.ranger", "enemy.mage" }));
+        }
+
+        private static BattlePartySnapshot PartySnapshot()
+        {
+            var members = new[]
+            {
+                ("player.warrior", "class.warrior"),
+                ("player.ranger", "class.ranger"),
+                ("player.mage", "class.mage")
+            };
+            return new BattlePartySnapshot(members.Select(member => new BattleCombatantSnapshot(
+                member.Item1,
+                "unit." + member.Item1.Substring("player.".Length),
+                member.Item2,
+                20,
+                8,
+                8,
+                2,
+                4,
+                500,
+                1,
+                20,
+                8,
+                new[] { "skill.basic" },
+                System.Array.Empty<BattleSkillModifierSnapshot>(),
+                System.Array.Empty<BattlePassiveSnapshot>())));
         }
 
         private static void AssertTerrainCount(BattleMap map, TerrainType terrain, int expected)

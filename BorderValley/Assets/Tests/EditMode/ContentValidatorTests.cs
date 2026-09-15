@@ -1,5 +1,6 @@
 using System.Linq;
 using BorderValley.Data;
+using BorderValley.Data.Narrative;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -57,6 +58,36 @@ namespace BorderValley.Data.Tests
             var issues = ContentValidator.Validate(new[] { definition }).ToList();
             Assert.That(issues, Is.Empty);
             Object.DestroyImmediate(definition);
+        }
+
+        [Test]
+        public void Validate_ShopWithoutOwner_ReturnsMissingShopOwner()
+        {
+            var shop = ScriptableObject.CreateInstance<ShopDefinition>();
+            shop.EditorConfigure("shop.general", "shop.general.name", string.Empty, new ShopOfferDefinition[0]);
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { shop }).ToList();
+
+            Assert.That(issues.Any(issue => issue.Code == "missing_shop_owner"), Is.True);
+            Object.DestroyImmediate(shop);
+        }
+
+        [Test]
+        public void Validate_ShopWithTwoOwners_ReturnsMultipleShopOwners()
+        {
+            var shop = ScriptableObject.CreateInstance<ShopDefinition>();
+            shop.EditorConfigure("shop.general", "shop.general.name", string.Empty, new ShopOfferDefinition[0]);
+            var first = ScriptableObject.CreateInstance<NpcDefinition>();
+            first.EditorConfigure("npc.first", "npc.first.name", string.Empty, shop.Id, 0);
+            var second = ScriptableObject.CreateInstance<NpcDefinition>();
+            second.EditorConfigure("npc.second", "npc.second.name", string.Empty, shop.Id, 1);
+
+            var issues = ContentValidator.Validate(new ContentDefinition[] { shop, first, second }).ToList();
+
+            Assert.That(issues.Any(issue => issue.Code == "multiple_shop_owners"), Is.True);
+            Object.DestroyImmediate(second);
+            Object.DestroyImmediate(first);
+            Object.DestroyImmediate(shop);
         }
 
         [Test]
