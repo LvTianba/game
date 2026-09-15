@@ -555,26 +555,24 @@ namespace BorderValley.Core.Persistence
         private void ReplaceInvalidPrimary(string temporary, string primary)
         {
             var previousPrimary = primary + ".previous";
-            string preservedPrevious = null;
+            var invalidTransaction = primary + ".invalid." + Guid.NewGuid().ToString("N");
             var invalidPrimaryMoved = false;
             var newPrimaryCommitted = false;
 
             try
             {
-                preservedPrevious = PreservePreviousSnapshot(previousPrimary);
-                commitOperations.Move(primary, previousPrimary, false);
+                commitOperations.Move(primary, invalidTransaction, false);
                 invalidPrimaryMoved = true;
                 commitOperations.Move(temporary, primary, false);
                 newPrimaryCommitted = true;
 
                 TryDeleteFile(previousPrimary);
-                CleanupPreservedSnapshot(preservedPrevious);
+                TryDeleteFile(invalidTransaction);
             }
             catch
             {
                 if (!newPrimaryCommitted && invalidPrimaryMoved)
-                    TryMove(previousPrimary, primary);
-                RestorePreservedSnapshot(preservedPrevious, previousPrimary);
+                    TryMove(invalidTransaction, primary);
                 throw;
             }
         }
