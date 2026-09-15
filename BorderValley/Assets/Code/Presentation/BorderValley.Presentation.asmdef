@@ -1,0 +1,6 @@
+{
+  "name": "BorderValley.Presentation",
+  "rootNamespace": "BorderValley.Presentation",
+  "references": ["BorderValley.Core"],
+  "autoReferenced": true
+}

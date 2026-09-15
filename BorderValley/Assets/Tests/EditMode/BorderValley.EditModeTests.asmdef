@@ -1,6 +1,6 @@
 {
   "name": "BorderValley.EditModeTests",
-  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative", "BorderValley.World", "BorderValley.UI"],
+  "references": ["BorderValley.Core", "BorderValley.Data", "BorderValley.Battle", "BorderValley.Inventory", "BorderValley.Narrative", "BorderValley.World", "BorderValley.UI", "BorderValley.Presentation"],
   "optionalUnityReferences": ["TestAssemblies"],
   "overrideReferences": true,
   "precompiledReferences": ["Newtonsoft.Json.dll", "nunit.framework.dll"],
