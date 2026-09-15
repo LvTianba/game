@@ -101,6 +101,18 @@ namespace BorderValley.Inventory.Tests
         }
 
         [Test]
+        public void EquipSelected_WhenSuccessful_InvokesSaveCallback()
+        {
+            var saves = 0;
+            var presenter = Presenter(_ => saves++);
+            presenter.Select("warrior.item");
+
+            Assert.That(presenter.EquipSelected("class.warrior"), Is.True);
+            Assert.That(service.IsEquipped("warrior.item"), Is.True);
+            Assert.That(saves, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Unequip_WhenMissing_ExposesLocalizedErrorKey()
         {
             var presenter = Presenter();

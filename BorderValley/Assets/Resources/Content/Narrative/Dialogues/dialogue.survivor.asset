@@ -33,6 +33,18 @@ MonoBehaviour:
         objectiveId:
         amount: 1
       nextNodeId: dialogue.survivor.accepted
+    - choiceId: dialogue.survivor.choice.turn_in
+      labelKey: dialogue.survivor.choice.turn_in.label
+      conditions:
+      - kind: 0
+        targetId: quest.side.survivor
+        value: 2
+      actions:
+      - kind: 2
+        targetId: quest.side.survivor
+        objectiveId:
+        amount: 1
+      nextNodeId: dialogue.survivor.completed
     - choiceId: dialogue.survivor.choice.leave
       labelKey: dialogue.survivor.choice.leave.label
       conditions: []
@@ -42,6 +54,13 @@ MonoBehaviour:
   - nodeId: dialogue.survivor.accepted
     speakerNpcId: npc.survivor
     textKey: dialogue.survivor.accepted.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:
+  - nodeId: dialogue.survivor.completed
+    speakerNpcId: npc.survivor
+    textKey: dialogue.survivor.completed.text
     conditions: []
     actions: []
     choices: []

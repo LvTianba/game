@@ -34,12 +34,12 @@ namespace BorderValley.Editor
                 new[]
                 {
                     new QuestObjectiveDefinition(
-                        "objective.main.bandits",
+                        "objective.main.boss",
                         QuestObjectiveKind.DefeatEnemy,
-                        "enemy.bandit",
+                        "enemy.crypt_boss",
                         1,
                         false,
-                        "quest.main.crypt.objective.bandits")
+                        "quest.main.crypt.objective.boss")
                 },
                 new[] { new QuestRewardDefinition(QuestRewardKind.Gold, string.Empty, 100) });
             var rangerQuest = Quest(
@@ -213,7 +213,7 @@ namespace BorderValley.Editor
                 string.Empty);
             var cryptBoss = Encounter(
                 "encounter.crypt.boss",
-                new[] { "enemy.mage" },
+                new[] { "enemy.crypt_boss" },
                 rewardTable.Id,
                 100,
                 120,
@@ -504,9 +504,26 @@ namespace BorderValley.Editor
                                 questId,
                                 (int)QuestState.NotStarted)
                         }),
+                    Choice(
+                        id + ".choice.turn_in",
+                        id + ".choice.turn_in.label",
+                        id + ".completed",
+                        new[] { new DialogueActionDefinition(DialogueActionKind.TurnInQuest, questId) },
+                        new[]
+                        {
+                            new DialogueConditionDefinition(
+                                DialogueConditionKind.QuestState,
+                                questId,
+                                (int)QuestState.ReadyToTurnIn)
+                        }),
                     Choice(id + ".choice.leave", id + ".choice.leave.label", id + ".leave")
                 });
-            return Dialogue(id, start, Node(id + ".accepted", npcId, id + ".accepted.text"), Node(id + ".leave", npcId, id + ".leave.text"));
+            return Dialogue(
+                id,
+                start,
+                Node(id + ".accepted", npcId, id + ".accepted.text"),
+                Node(id + ".completed", npcId, id + ".completed.text"),
+                Node(id + ".leave", npcId, id + ".leave.text"));
         }
 
         private static DialogueDefinition CreateSimpleDialogue(string id, string npcId) =>

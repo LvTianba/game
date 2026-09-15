@@ -12,6 +12,7 @@ using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
+using BorderValley.UI.Inventory;
 using BorderValley.World;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -26,6 +27,7 @@ namespace BorderValley.UI.World
         [SerializeField] private float maxMovementStep = 0.05f;
         [SerializeField] private float playerRadius = 0.35f;
         private const string DefaultAreaId = "area.village";
+        private const float PendingAutosaveRetryInterval = 1f;
 
         private GameContext context;
         private NarrativeStateService narrative;
@@ -34,6 +36,10 @@ namespace BorderValley.UI.World
         private ShopService shopService;
         private InventoryService inventory;
         private EconomyService economy;
+        private PartyProgressionService progression;
+        private CraftingService crafting;
+        private CraftingCosts craftingCosts;
+        private IReadOnlyDictionary<string, AffixDefinition> affixDefinitions;
         private PartyBattleSnapshotBuilder snapshotBuilder;
         private LootGenerator lootGenerator;
         private IBattleFlow flow;
@@ -51,6 +57,8 @@ namespace BorderValley.UI.World
         private BattleResult pendingBattleResult;
         private WorldBattleSettlementResult pendingSettlement;
         private bool processingPendingResult;
+        private float pendingAutosaveCooldown;
+        private bool pendingSettlementBlockedOnCapacity;
         private readonly HashSet<string> suppressedExitIds = new(StringComparer.Ordinal);
         private QuestLogPanelView questLogView;
         private string pendingBattleResultKey = string.Empty;
@@ -60,6 +68,10 @@ namespace BorderValley.UI.World
         public WorldMapView MapView { get; private set; }
         public Button InteractButton { get; private set; }
         public Button QuestLogButton { get; private set; }
+        public Button InventoryButton { get; private set; }
+        public Button CraftButton { get; private set; }
+        public Button RestButton { get; private set; }
+        public InventoryPanelView InventoryPanel { get; private set; }
         public DialogueUiPresenter DialoguePresenter { get; private set; }
         public ShopUiPresenter ShopPresenter { get; private set; }
         public QuestLogPresenter QuestLogPresenter { get; private set; }
@@ -102,6 +114,10 @@ namespace BorderValley.UI.World
                 shopService = context.Get<ShopService>();
                 inventory = context.Get<InventoryService>();
                 economy = context.Get<EconomyService>();
+                progression = context.Get<PartyProgressionService>();
+                crafting = context.Get<CraftingService>();
+                craftingCosts = context.Get<CraftingCosts>();
+                affixDefinitions = context.Get<IReadOnlyDictionary<string, AffixDefinition>>();
                 snapshotBuilder = context.Get<PartyBattleSnapshotBuilder>();
                 lootGenerator = context.Get<LootGenerator>();
                 flow = context.Get<IBattleFlow>();
@@ -197,9 +213,40 @@ namespace BorderValley.UI.World
                 new Vector2(240f, 80f),
                 OpenQuestLog);
 
+            InventoryButton = CreateButton(
+                canvas.transform,
+                "Inventory",
+                InventoryTextKeys.OpenInventory,
+                new Vector2(-430f, -170f),
+                new Vector2(240f, 80f),
+                OpenInventory);
+            CraftButton = CreateButton(
+                canvas.transform,
+                "Craft",
+                InventoryTextKeys.OpenCraft,
+                new Vector2(-690f, -170f),
+                new Vector2(240f, 80f),
+                OpenCraft);
+            RestButton = CreateButton(
+                canvas.transform,
+                "Rest",
+                InventoryTextKeys.Rest,
+                new Vector2(-950f, -170f),
+                new Vector2(240f, 80f),
+                RestParty);
+
             var dialogueView = CreatePanel<DialoguePanelView>(canvas.transform, "DialoguePanel");
             var shopView = CreatePanel<ShopPanelView>(canvas.transform, "ShopPanel");
             questLogView = CreatePanel<QuestLogPanelView>(canvas.transform, "QuestLogPanel");
+            InventoryPanel = CreatePanel<InventoryPanelView>(canvas.transform, "InventoryPanel");
+            InventoryPanel.Initialize(
+                inventory,
+                progression,
+                crafting,
+                craftingCosts,
+                affixDefinitions,
+                economy,
+                _ => TrySaveWorld());
             DialoguePresenter = new DialogueUiPresenter(dialogueService, dialogueView);
             ShopPresenter = new ShopUiPresenter(shopService, inventory, economy, narrative, shopView);
             QuestLogPresenter = new QuestLogPresenter(quests, questLogView);
@@ -218,6 +265,7 @@ namespace BorderValley.UI.World
             if (!initialized)
                 return;
 
+            AdvancePendingAutosaveCooldown(deltaTime);
             RetryPendingSettlementIfSafe();
             RefreshInteractionState();
             if (battleStarted || IsUiOpen)
@@ -386,9 +434,14 @@ namespace BorderValley.UI.World
             if (pendingSettlement == null)
                 return pendingBattleResult == null;
             if (!TrySaveWorld())
+            {
+                pendingAutosaveCooldown = PendingAutosaveRetryInterval;
                 return false;
+            }
 
             pendingSettlement = null;
+            pendingAutosaveCooldown = 0f;
+            pendingSettlementBlockedOnCapacity = false;
             RefreshMap();
             return true;
         }
@@ -398,9 +451,30 @@ namespace BorderValley.UI.World
             if (!HasPendingSettlement || inventory == null)
                 return;
             if (pendingSettlement == null && inventory.Items.Count >= inventory.Capacity)
+            {
+                pendingSettlementBlockedOnCapacity = true;
+                return;
+            }
+
+            if (pendingSettlementBlockedOnCapacity)
+            {
+                // Releasing inventory space is a key event, so retry without waiting for the interval.
+                pendingAutosaveCooldown = 0f;
+                pendingSettlementBlockedOnCapacity = false;
+            }
+
+            if (pendingAutosaveCooldown > 0f)
                 return;
 
-            ProcessPendingBattleResult();
+            if (!ProcessPendingBattleResult() && HasPendingSettlement)
+                pendingAutosaveCooldown = PendingAutosaveRetryInterval;
+        }
+
+        private void AdvancePendingAutosaveCooldown(float deltaTime)
+        {
+            if (pendingAutosaveCooldown <= 0f)
+                return;
+            pendingAutosaveCooldown = Mathf.Max(0f, pendingAutosaveCooldown - Mathf.Max(0f, deltaTime));
         }
 
         private bool SettlePendingBattleResult()
@@ -470,6 +544,7 @@ namespace BorderValley.UI.World
         }
 
         private bool IsUiOpen =>
+            InventoryPanel != null && InventoryPanel.IsOpen ||
             DialoguePresenter != null && DialoguePresenter.IsOpen ||
             ShopPresenter != null && ShopPresenter.IsOpen ||
             QuestLogPresenter != null && QuestLogPresenter.IsOpen;
@@ -504,6 +579,30 @@ namespace BorderValley.UI.World
         {
             QuestLogPresenter.Open();
             RefreshInteractionState();
+        }
+
+        private void OpenInventory()
+        {
+            InventoryPanel?.Open(InventoryPanelMode.Inventory);
+            RefreshInteractionState();
+        }
+
+        private void OpenCraft()
+        {
+            InventoryPanel?.Open(InventoryPanelMode.Craft);
+            RefreshInteractionState();
+        }
+
+        private void RestParty()
+        {
+            if (progression == null)
+            {
+                LastErrorKey = InventoryTextKeys.ServiceUnavailable;
+                return;
+            }
+
+            progression.RecoverOutOfCombat(10);
+            TrySaveWorld();
         }
 
         private void OnQuestLogClosed() => RefreshInteractionState();

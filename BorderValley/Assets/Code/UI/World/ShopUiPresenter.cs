@@ -131,7 +131,7 @@ namespace BorderValley.UI.World
                 ? WorldTextKeys.ServiceUnavailable
                 : error;
             IsOpen = keepOpen;
-            view.SetVisible(true);
+            view.SetVisible(keepOpen);
             Refresh();
             return false;
         }

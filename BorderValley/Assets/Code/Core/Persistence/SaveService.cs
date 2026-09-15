@@ -73,7 +73,18 @@ namespace BorderValley.Core.Persistence
                             TryDeleteFile(temporary);
                             break;
                         }
-                        File.Replace(temporary, primary, backup);
+
+                        try
+                        {
+                            File.Replace(temporary, primary, backup);
+                        }
+                        catch (Exception exception) when (
+                            exception is UnauthorizedAccessException ||
+                            exception is PlatformNotSupportedException ||
+                            exception is IOException)
+                        {
+                            ReplaceByCopy(temporary, primary, backup);
+                        }
                         break;
                     case SaveFileState.Invalid:
                         File.Delete(primary);
@@ -145,6 +156,7 @@ namespace BorderValley.Core.Persistence
 
                 try
                 {
+                    ApplySchemaMigration(data);
                     foreach (var participant in participants.Values)
                     {
                         participant.Reset();
@@ -193,6 +205,25 @@ namespace BorderValley.Core.Persistence
             }
         }
 
+        private void ApplySchemaMigration(SaveGameData data)
+        {
+            if (data.SchemaVersion >= SaveGameData.CurrentSchemaVersion)
+                return;
+
+            // Schema 1 predates the narrative participant. Participants absent from a legacy
+            // payload keep their default (post-reset) state; existing participants are preserved.
+            foreach (var participant in participants.Values)
+            {
+                if (data.Participants.ContainsKey(participant.Key))
+                    continue;
+
+                participant.Reset();
+                data.Participants[participant.Key] = participant.Capture();
+            }
+
+            data.SchemaVersion = SaveGameData.CurrentSchemaVersion;
+        }
+
         private SaveFileState InspectSaveFile(string path, out Exception readException)
         {
             readException = null;
@@ -228,7 +259,13 @@ namespace BorderValley.Core.Persistence
             if (!string.Equals(ComputeChecksum(payload), checksum, StringComparison.Ordinal)) return null;
 
             var data = JsonConvert.DeserializeObject<SaveGameData>(payload);
-            if (data == null || data.SchemaVersion != SaveGameData.CurrentSchemaVersion) return null;
+            if (data == null ||
+                data.SchemaVersion < 1 ||
+                data.SchemaVersion > SaveGameData.CurrentSchemaVersion)
+            {
+                return null;
+            }
+
             return data;
         }
 
@@ -259,6 +296,14 @@ namespace BorderValley.Core.Persistence
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+
+        private static void ReplaceByCopy(string temporary, string primary, string backup)
+        {
+            if (File.Exists(primary))
+                File.Copy(primary, backup, true);
+            File.Copy(temporary, primary, true);
+            TryDeleteFile(temporary);
         }
 
         private static string ComputeChecksum(string value)

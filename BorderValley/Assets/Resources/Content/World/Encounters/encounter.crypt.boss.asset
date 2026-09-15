@@ -16,7 +16,7 @@ MonoBehaviour:
   encounterId: encounter.crypt.boss
   scenarioId: core
   enemyDefinitionIds:
-  - enemy.mage
+  - enemy.crypt_boss
   rewardTableId: loot.bandit.core
   goldReward: 100
   experienceReward: 120

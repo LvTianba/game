@@ -33,6 +33,18 @@ MonoBehaviour:
         objectiveId:
         amount: 1
       nextNodeId: dialogue.ranger_companion.accepted
+    - choiceId: dialogue.ranger_companion.choice.turn_in
+      labelKey: dialogue.ranger_companion.choice.turn_in.label
+      conditions:
+      - kind: 0
+        targetId: quest.side.ranger
+        value: 2
+      actions:
+      - kind: 2
+        targetId: quest.side.ranger
+        objectiveId:
+        amount: 1
+      nextNodeId: dialogue.ranger_companion.completed
     - choiceId: dialogue.ranger_companion.choice.leave
       labelKey: dialogue.ranger_companion.choice.leave.label
       conditions: []
@@ -42,6 +54,13 @@ MonoBehaviour:
   - nodeId: dialogue.ranger_companion.accepted
     speakerNpcId: npc.ranger_companion
     textKey: dialogue.ranger_companion.accepted.text
+    conditions: []
+    actions: []
+    choices: []
+    nextNodeId:
+  - nodeId: dialogue.ranger_companion.completed
+    speakerNpcId: npc.ranger_companion
+    textKey: dialogue.ranger_companion.completed.text
     conditions: []
     actions: []
     choices: []

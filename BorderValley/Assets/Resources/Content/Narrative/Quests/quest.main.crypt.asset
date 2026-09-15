@@ -17,12 +17,12 @@ MonoBehaviour:
   descriptionKey: quest.main.crypt.description
   prerequisiteQuestIds: []
   objectives:
-  - objectiveId: objective.main.bandits
+  - objectiveId: objective.main.boss
     kind: 0
-    targetId: enemy.bandit
+    targetId: enemy.crypt_boss
     requiredCount: 1
     consumeOnTurnIn: 0
-    localizationKey: quest.main.crypt.objective.bandits
+    localizationKey: quest.main.crypt.objective.boss
   rewards:
   - kind: 0
     targetId:

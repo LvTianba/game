@@ -1,6 +1,9 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using BorderValley.Core.Persistence;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -158,6 +161,110 @@ namespace BorderValley.Core.Tests
             Assert.That(participant.CurrentScene, Is.EqualTo("World"));
         }
 
+        [Test]
+        public void Load_WhenSchemaOneSaveMissesNarrative_MigratesDefaultNarrativeAndKeepsLegacyParticipants()
+        {
+            var inventory = new FakeParticipant { ParticipantKey = "inventory", Value = 41 };
+            var party = new FakeParticipant { ParticipantKey = "party", Value = 42 };
+            var narrative = new FakeParticipant { ParticipantKey = "narrative" };
+            var service = new SaveService(root, new[] { inventory, party, narrative });
+            WriteLegacySchemaOneSave(
+                service,
+                "World",
+                new JObject
+                {
+                    ["inventory"] = new JObject { ["value"] = 7 },
+                    ["party"] = new JObject { ["value"] = 9 }
+                });
+            inventory.Value = 100;
+            party.Value = 200;
+            narrative.Value = 300;
+
+            Assert.That(service.Load(0), Is.True);
+
+            Assert.That(inventory.Value, Is.EqualTo(7));
+            Assert.That(party.Value, Is.EqualTo(9));
+            Assert.That(narrative.Value, Is.EqualTo(0));
+            Assert.That(inventory.CurrentScene, Is.EqualTo("World"));
+            Assert.That(party.CurrentScene, Is.EqualTo("World"));
+            Assert.That(narrative.CurrentScene, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void Load_WhenSchemaOneMigrationRestoreFails_RollsBackAllParticipants()
+        {
+            var inventory = new FakeParticipant { ParticipantKey = "inventory", Value = 5 };
+            var narrative = new FakeParticipant { ParticipantKey = "narrative" };
+            var service = new SaveService(root, new[] { inventory, narrative });
+            WriteLegacySchemaOneSave(
+                service,
+                "World",
+                new JObject { ["inventory"] = new JObject { ["value"] = 8 } });
+            inventory.Value = 77;
+            narrative.Value = 88;
+            inventory.RejectValue = 8;
+
+            Assert.That(service.Load(0), Is.False);
+
+            Assert.That(inventory.Value, Is.EqualTo(77));
+            Assert.That(narrative.Value, Is.EqualTo(88));
+
+            inventory.RejectValue = 0;
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(inventory.Value, Is.EqualTo(8));
+            Assert.That(narrative.Value, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Load_WhenSchemaIsNewerThanSupported_ReturnsFalse()
+        {
+            var participant = new FakeParticipant { Value = 5 };
+            var service = new SaveService(root, new[] { participant });
+            WriteLegacySave(
+                service,
+                SaveGameData.CurrentSchemaVersion + 1,
+                "World",
+                new JObject { ["fake"] = new JObject { ["value"] = 5 } });
+            participant.Value = 77;
+
+            Assert.That(service.Load(0), Is.False);
+            Assert.That(participant.Value, Is.EqualTo(77));
+        }
+
+        private void WriteLegacySchemaOneSave(SaveService service, string sceneName, JObject participants) =>
+            WriteLegacySave(service, 1, sceneName, participants);
+
+        private static void WriteLegacySave(
+            SaveService service,
+            int schemaVersion,
+            string sceneName,
+            JObject participants)
+        {
+            var payload = new JObject
+            {
+                ["SchemaVersion"] = schemaVersion,
+                ["SceneName"] = sceneName,
+                ["SavedAtUtc"] = DateTime.UtcNow,
+                ["Participants"] = participants
+            }.ToString(Formatting.Indented);
+            var envelope = new JObject
+            {
+                ["payload"] = payload,
+                ["checksum"] = ComputeChecksum(payload)
+            };
+            File.WriteAllText(
+                service.GetPrimaryPathForTests(0),
+                envelope.ToString(Formatting.None),
+                new UTF8Encoding(false));
+        }
+
+        private static string ComputeChecksum(string value)
+        {
+            using var sha = SHA256.Create();
+            return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(value)))
+                .Replace("-", string.Empty);
+        }
+
         public void Dispose()
         {
             if (Directory.Exists(root)) Directory.Delete(root, true);
@@ -168,7 +275,7 @@ namespace BorderValley.Core.Tests
             public string ParticipantKey { get; set; } = "fake";
             public string Key => ParticipantKey;
             public int Value { get; set; }
-            public int RejectValue { get; set; }
+            public int RejectValue { get; set; } = int.MinValue;
             public string CurrentScene { get; private set; } = string.Empty;
             public JObject Capture() => new JObject { ["value"] = Value };
             public void Restore(JObject state)

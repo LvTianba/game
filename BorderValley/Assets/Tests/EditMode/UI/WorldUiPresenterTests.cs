@@ -310,6 +310,35 @@ namespace BorderValley.UI.World.Tests
             Assert.That(view.Data.ErrorKey, Is.EqualTo(NarrativeTextKeys.UnknownShop));
             Assert.That(view.Data.BuyOffers, Is.Empty);
             Assert.That(presenter.CurrentShopId, Is.Empty);
+            Assert.That(view.IsVisible, Is.False);
+        }
+
+        [Test]
+        public void Open_UnknownShop_DoesNotShowEmptyPanel()
+        {
+            var runtime = CreateShopRuntime();
+            var view = new StubShopPanelView();
+            var presenter = new ShopUiPresenter(runtime.Shop, runtime.Inventory, runtime.Economy, runtime.State, view);
+
+            Assert.That(presenter.Open("shop.missing"), Is.False);
+
+            Assert.That(presenter.IsOpen, Is.False);
+            Assert.That(view.IsVisible, Is.False);
+        }
+
+        [Test]
+        public void BuyFailure_KeepsOpenShopVisible()
+        {
+            var runtime = CreateShopRuntime(startingGold: 0);
+            var view = new StubShopPanelView();
+            var presenter = new ShopUiPresenter(runtime.Shop, runtime.Inventory, runtime.Economy, runtime.State, view);
+            Assert.That(presenter.Open(ShopId), Is.True);
+
+            view.RaiseBuy("offer.missing");
+
+            Assert.That(presenter.IsOpen, Is.True);
+            Assert.That(view.IsVisible, Is.True);
+            Assert.That(presenter.LastErrorKey, Is.EqualTo(NarrativeTextKeys.UnknownOffer));
         }
 
         [Test]
@@ -359,7 +388,7 @@ namespace BorderValley.UI.World.Tests
             var view = root.AddComponent<ShopPanelView>();
             view.Render(ShopData(2, 1));
             var panel = view.transform.Find("ShopPanel");
-            var list = panel.Find("List");
+            var list = view.ContentForTests;
             var staleButton = list.GetChild(0).GetComponent<Button>();
             Assert.That(list.childCount, Is.EqualTo(2));
 
@@ -377,6 +406,68 @@ namespace BorderValley.UI.World.Tests
             var panelObject = panel.gameObject;
             Object.DestroyImmediate(root);
             Assert.That(panelObject == null, Is.True);
+        }
+
+        [Test]
+        public void ShopPanelView_ThirtySaleItems_ScrollsToReachableLastItem()
+        {
+            var root = Track(new GameObject("ShopPanelViewScrollTest", typeof(RectTransform)));
+            root.GetComponent<RectTransform>().sizeDelta = new Vector2(1000f, 800f);
+            var view = root.AddComponent<ShopPanelView>();
+
+            view.Render(ShopData(0, 30));
+            view.transform.Find("ShopPanel/SellTab").GetComponent<Button>().onClick.Invoke();
+
+            var scroll = view.ScrollRectForTests;
+            var content = view.ContentForTests;
+            var viewport = view.ViewportForTests;
+            Assert.That(scroll, Is.Not.Null);
+            Assert.That(content, Is.Not.Null);
+            Assert.That(viewport, Is.Not.Null);
+            Assert.That(scroll.content, Is.EqualTo(content));
+            Assert.That(scroll.viewport, Is.EqualTo(viewport));
+            Assert.That(scroll.vertical, Is.True);
+            Assert.That(scroll.horizontal, Is.False);
+            Assert.That(content.childCount, Is.EqualTo(30));
+            Assert.That(
+                content.rect.height,
+                Is.EqualTo(ShopPanelView.RowHeight * 30f).Within(0.01f));
+            Assert.That(content.rect.height, Is.GreaterThan(viewport.rect.height));
+
+            content.anchoredPosition = new Vector2(
+                content.anchoredPosition.x,
+                content.rect.height - viewport.rect.height);
+
+            var last = (RectTransform)content.GetChild(content.childCount - 1);
+            var lastCorners = new Vector3[4];
+            last.GetWorldCorners(lastCorners);
+            var viewportCorners = new Vector3[4];
+            viewport.GetWorldCorners(viewportCorners);
+            Assert.That(lastCorners[0].y, Is.GreaterThanOrEqualTo(viewportCorners[0].y - 0.01f));
+            Assert.That(lastCorners[1].y, Is.LessThanOrEqualTo(viewportCorners[1].y + 0.01f));
+            Assert.That(lastCorners[1].y, Is.GreaterThan(lastCorners[0].y));
+        }
+
+        [Test]
+        public void ShopPanelView_UnscrolledThirtySaleItems_KeepLastItemBelowViewport()
+        {
+            var root = Track(new GameObject("ShopPanelViewOverflowTest", typeof(RectTransform)));
+            root.GetComponent<RectTransform>().sizeDelta = new Vector2(1000f, 800f);
+            var view = root.AddComponent<ShopPanelView>();
+
+            view.Render(ShopData(0, 30));
+            view.transform.Find("ShopPanel/SellTab").GetComponent<Button>().onClick.Invoke();
+
+            var content = view.ContentForTests;
+            var viewport = view.ViewportForTests;
+            var last = (RectTransform)content.GetChild(content.childCount - 1);
+            var lastCorners = new Vector3[4];
+            last.GetWorldCorners(lastCorners);
+            var viewportCorners = new Vector3[4];
+            viewport.GetWorldCorners(viewportCorners);
+
+            Assert.That(content.anchoredPosition, Is.EqualTo(Vector2.zero));
+            Assert.That(lastCorners[1].y, Is.LessThan(viewportCorners[0].y));
         }
 
         [Test]

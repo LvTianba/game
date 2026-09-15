@@ -1,13 +1,19 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using BorderValley.Core.BattleFlow;
-
-using System.Collections.Generic;
 
 namespace BorderValley.Battle.Domain
 {
     public static class BattleScenarioFactory
     {
+        private static readonly string[] DefaultEnemyDefinitionIds =
+        {
+            "enemy.bandit",
+            "enemy.ranger",
+            "enemy.mage"
+        };
+
         public static BattleScenario CreateCoreScenario()
         {
             var skills = CreateSkills();
@@ -62,13 +68,46 @@ namespace BorderValley.Battle.Domain
         {
             if (partySnapshot == null) return CreateCoreScenario();
 
+            return CreateCoreScenarioCore(partySnapshot);
+        }
+
+        public static BattleScenario CreateScenario(
+            BattlePartySnapshot partySnapshot,
+            BattleContext context,
+            string scenarioId = null)
+        {
+            if (scenarioId != null && string.IsNullOrWhiteSpace(scenarioId))
+                throw new ArgumentException("Scenario ID cannot be blank.", nameof(scenarioId));
+
+            if (context == null ||
+                context.EnemyDefinitionIds == null ||
+                context.EnemyDefinitionIds.Length == 0)
+            {
+                return CreateCoreScenario(partySnapshot);
+            }
+
+            if (context.EnemyDefinitionIds.Any(string.IsNullOrWhiteSpace))
+                throw new ArgumentException("Enemy definition IDs cannot contain blank values.", nameof(context));
+
+            return CreateSnapshotScenario(partySnapshot, context.EnemyDefinitionIds);
+        }
+
+        private static BattleScenario CreateCoreScenarioCore(BattlePartySnapshot partySnapshot)
+        {
+            return CreateSnapshotScenario(partySnapshot, DefaultEnemyDefinitionIds);
+        }
+
+        private static BattleScenario CreateSnapshotScenario(
+            BattlePartySnapshot partySnapshot,
+            IReadOnlyList<string> enemyDefinitionIds)
+        {
             var skills = CreateSkills();
             var playerSkills = new Dictionary<string, SkillDefinition>(skills, StringComparer.Ordinal);
             var enemySkills = new Dictionary<string, SkillDefinition>(skills, StringComparer.Ordinal);
-            var state = CreateSnapshotState(partySnapshot);
-            var unitSkills = CreateEnemyUnitSkills();
+            var state = CreateSnapshotState(partySnapshot, enemyDefinitionIds);
+            var unitSkills = CreateEnemyUnitSkills(state);
 
-            foreach (var member in partySnapshot.Members)
+            foreach (var member in partySnapshot?.Members ?? Enumerable.Empty<BattleCombatantSnapshot>())
             {
                 var unitSkillIds = new List<string>();
                 foreach (var baseSkillId in member.SkillIds.Distinct(StringComparer.Ordinal))
@@ -98,7 +137,27 @@ namespace BorderValley.Battle.Domain
             return new BattleScenario(state, playerSkills, enemySkills, unitSkills);
         }
 
-        private static BattleState CreateSnapshotState(BattlePartySnapshot partySnapshot)
+        private static BattleState CreateSnapshotState(
+            BattlePartySnapshot partySnapshot,
+            IReadOnlyList<string> enemyDefinitionIds)
+        {
+            var state = CreateEmptyState();
+
+            if (partySnapshot == null)
+            {
+                AddCorePlayerUnits(state);
+            }
+            else
+            {
+                foreach (var member in partySnapshot.Members)
+                    AddSnapshotPlayer(state, member);
+            }
+
+            AddEnemyFormation(state, enemyDefinitionIds);
+            return state;
+        }
+
+        private static BattleState CreateEmptyState()
         {
             const int width = 8;
             const int height = 6;
@@ -108,27 +167,46 @@ namespace BorderValley.Battle.Domain
             cells[3 * width + 4] = TerrainType.HighGround;
             cells[3 * width + 3] = TerrainType.Mud;
             cells[2 * width + 4] = TerrainType.Mud;
-            var state = new BattleState(new BattleMap(width, height, cells));
+            return new BattleState(new BattleMap(width, height, cells));
+        }
 
-            foreach (var member in partySnapshot.Members)
-                AddSnapshotPlayer(state, member);
+        private static void AddEnemyFormation(
+            BattleState state,
+            IReadOnlyList<string> enemyDefinitionIds)
+        {
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            var index = 0;
+            foreach (var definitionId in enemyDefinitionIds)
+            {
+                counts.TryGetValue(definitionId, out var occurrence);
+                occurrence++;
+                counts[definitionId] = occurrence;
+                var unitId = occurrence == 1
+                    ? definitionId
+                    : definitionId + "#" + occurrence;
+                state.AddUnit(CreateEnemyUnit(unitId, definitionId, EnemyPosition(index)));
+                index++;
+            }
+        }
 
+        private static void AddCorePlayerUnits(BattleState state)
+        {
             state.AddUnit(CreateUnit(
-                "enemy.bandit",
-                "enemy.bandit",
-                Team.Enemy,
-                20,
-                0,
+                "player.warrior",
+                "unit.warrior",
+                Team.Player,
+                26,
                 8,
-                3,
-                5,
+                9,
+                6,
+                4,
                 0.05f,
-                1,
-                new GridPosition(5, 2)));
+                2,
+                new GridPosition(2, 2)));
             state.AddUnit(CreateUnit(
-                "enemy.ranger",
-                "enemy.ranger",
-                Team.Enemy,
+                "player.ranger",
+                "unit.ranger",
+                Team.Player,
                 18,
                 10,
                 10,
@@ -136,11 +214,11 @@ namespace BorderValley.Battle.Domain
                 7,
                 0.15f,
                 2,
-                new GridPosition(6, 2)));
+                new GridPosition(1, 2)));
             state.AddUnit(CreateUnit(
-                "enemy.mage",
-                "enemy.mage",
-                Team.Enemy,
+                "player.mage",
+                "unit.mage",
+                Team.Player,
                 15,
                 16,
                 11,
@@ -148,10 +226,37 @@ namespace BorderValley.Battle.Domain
                 5,
                 0.05f,
                 6,
-                new GridPosition(6, 3)));
-
-            return state;
+                new GridPosition(1, 3)));
         }
+
+        private static BattleUnit CreateEnemyUnit(
+            string unitId,
+            string definitionId,
+            GridPosition position)
+        {
+            return definitionId switch
+            {
+                "enemy.bandit" => CreateUnit(unitId, definitionId, Team.Enemy, 20, 0, 8, 3, 5, 0.05f, 1, position),
+                "enemy.ranger" => CreateUnit(unitId, definitionId, Team.Enemy, 18, 10, 10, 3, 7, 0.15f, 2, position),
+                "enemy.mage" => CreateUnit(unitId, definitionId, Team.Enemy, 15, 16, 11, 1, 5, 0.05f, 6, position),
+                "enemy.wolf" => CreateUnit(unitId, definitionId, Team.Enemy, 16, 0, 9, 2, 8, 0.1f, 1, position),
+                "enemy.crypt_boss" => CreateUnit(unitId, definitionId, Team.Enemy, 60, 24, 14, 6, 4, 0.1f, 5, position),
+                _ => throw new ArgumentException("Unknown enemy definition ID: " + definitionId, nameof(definitionId))
+            };
+        }
+
+        private static GridPosition EnemyPosition(int index) => index switch
+        {
+            0 => new GridPosition(5, 2),
+            1 => new GridPosition(6, 2),
+            2 => new GridPosition(6, 3),
+            3 => new GridPosition(5, 3),
+            4 => new GridPosition(7, 2),
+            5 => new GridPosition(7, 3),
+            6 => new GridPosition(5, 4),
+            7 => new GridPosition(7, 4),
+            _ => throw new ArgumentOutOfRangeException(nameof(index), "Enemy formations support at most eight units.")
+        };
 
         private static void AddSnapshotPlayer(BattleState state, BattleCombatantSnapshot member)
         {
@@ -199,111 +304,46 @@ namespace BorderValley.Battle.Domain
                 skill.Cooldown,
                 skill.Effects.ToArray());
 
-        private static Dictionary<string, string[]> CreateEnemyUnitSkills() =>
-            new(StringComparer.Ordinal)
+        private static Dictionary<string, string[]> CreateEnemyUnitSkills(BattleState state)
+        {
+            var result = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            foreach (var unit in state.Units.Where(unit => unit.Team == Team.Enemy))
+                result.Add(unit.Id, EnemySkillIds(unit.DefinitionId));
+            return result;
+        }
+
+        private static string[] EnemySkillIds(string definitionId) => definitionId switch
+        {
+            "enemy.bandit" => new[] { "skill.basic" },
+            "enemy.ranger" => new[]
             {
-                ["enemy.bandit"] = new[] { "skill.basic" },
-                ["enemy.ranger"] = new[]
-                {
-                    "skill.piercing_shot",
-                    "skill.snare",
-                    "skill.twin_shot",
-                    "skill.basic"
-                },
-                ["enemy.mage"] = new[]
-                {
-                    "skill.fireball",
-                    "skill.frost_nova",
-                    "skill.arcane_ward",
-                    "skill.basic"
-                }
-            };
+                "skill.piercing_shot",
+                "skill.snare",
+                "skill.twin_shot",
+                "skill.basic"
+            },
+            "enemy.mage" => new[]
+            {
+                "skill.fireball",
+                "skill.frost_nova",
+                "skill.arcane_ward",
+                "skill.basic"
+            },
+            "enemy.wolf" => new[] { "skill.basic" },
+            "enemy.crypt_boss" => new[]
+            {
+                "skill.fireball",
+                "skill.frost_nova",
+                "skill.basic"
+            },
+            _ => throw new ArgumentException("Unknown enemy definition ID: " + definitionId, nameof(definitionId))
+        };
+
         private static BattleState CreateState()
         {
-            const int width = 8;
-            const int height = 6;
-            var cells = new TerrainType[width * height];
-            Array.Fill(cells, TerrainType.Plain);
-            cells[2 * width + 3] = TerrainType.HighGround;
-            cells[3 * width + 4] = TerrainType.HighGround;
-            cells[3 * width + 3] = TerrainType.Mud;
-            cells[2 * width + 4] = TerrainType.Mud;
-            var state = new BattleState(new BattleMap(width, height, cells));
-
-            state.AddUnit(CreateUnit(
-                "player.warrior",
-                "unit.warrior",
-                Team.Player,
-                26,
-                8,
-                9,
-                6,
-                4,
-                0.05f,
-                2,
-                new GridPosition(2, 2)));
-            state.AddUnit(CreateUnit(
-                "player.ranger",
-                "unit.ranger",
-                Team.Player,
-                18,
-                10,
-                10,
-                3,
-                7,
-                0.15f,
-                2,
-                new GridPosition(1, 2)));
-            state.AddUnit(CreateUnit(
-                "player.mage",
-                "unit.mage",
-                Team.Player,
-                15,
-                16,
-                11,
-                1,
-                5,
-                0.05f,
-                6,
-                new GridPosition(1, 3)));
-
-            state.AddUnit(CreateUnit(
-                "enemy.bandit",
-                "enemy.bandit",
-                Team.Enemy,
-                20,
-                0,
-                8,
-                3,
-                5,
-                0.05f,
-                1,
-                new GridPosition(5, 2)));
-            state.AddUnit(CreateUnit(
-                "enemy.ranger",
-                "enemy.ranger",
-                Team.Enemy,
-                18,
-                10,
-                10,
-                3,
-                7,
-                0.15f,
-                2,
-                new GridPosition(6, 2)));
-            state.AddUnit(CreateUnit(
-                "enemy.mage",
-                "enemy.mage",
-                Team.Enemy,
-                15,
-                16,
-                11,
-                1,
-                5,
-                0.05f,
-                6,
-                new GridPosition(6, 3)));
-
+            var state = CreateEmptyState();
+            AddCorePlayerUnits(state);
+            AddEnemyFormation(state, DefaultEnemyDefinitionIds);
             return state;
         }
 

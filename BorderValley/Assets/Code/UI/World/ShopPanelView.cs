@@ -79,6 +79,8 @@ namespace BorderValley.UI.World
         private Text titleLabel;
         private Text goldLabel;
         private Text errorLabel;
+        private ScrollRect listScroll;
+        private RectTransform viewportRoot;
         private RectTransform listRoot;
         private Button buyTabButton;
         private Button sellTabButton;
@@ -86,6 +88,12 @@ namespace BorderValley.UI.World
         private readonly List<Button> listButtons = new();
         private ShopTab activeTab;
         private ShopPanelViewData data;
+
+        public const float RowHeight = 42f;
+
+        public ScrollRect ScrollRectForTests => listScroll;
+        public RectTransform ViewportForTests => viewportRoot;
+        public RectTransform ContentForTests => listRoot;
 
         public event Action<string> BuyRequested;
         public event Action<string> SellRequested;
@@ -158,6 +166,7 @@ namespace BorderValley.UI.World
                         Vector2.zero,
                         Vector2.one,
                         TextAnchor.MiddleCenter);
+                    UpdateContentHeight(0);
                     return;
                 }
 
@@ -174,9 +183,10 @@ namespace BorderValley.UI.World
                     var rect = button.GetComponent<RectTransform>();
                     listButtons.Add(button);
                     rect.pivot = new Vector2(0.5f, 1f);
-                    rect.offsetMin = new Vector2(0f, -((index + 1) * 42f));
-                    rect.offsetMax = new Vector2(0f, -(index * 42f));
+                    rect.offsetMin = new Vector2(0f, -((index + 1) * RowHeight));
+                    rect.offsetMax = new Vector2(0f, -(index * RowHeight));
                 }
+                UpdateContentHeight(data.BuyOffers.Count);
                 return;
             }
 
@@ -190,6 +200,7 @@ namespace BorderValley.UI.World
                     Vector2.zero,
                     Vector2.one,
                     TextAnchor.MiddleCenter);
+                UpdateContentHeight(0);
                 return;
             }
 
@@ -206,9 +217,17 @@ namespace BorderValley.UI.World
                 var rect = button.GetComponent<RectTransform>();
                 listButtons.Add(button);
                 rect.pivot = new Vector2(0.5f, 1f);
-                rect.offsetMin = new Vector2(0f, -((index + 1) * 42f));
-                rect.offsetMax = new Vector2(0f, -(index * 42f));
+                rect.offsetMin = new Vector2(0f, -((index + 1) * RowHeight));
+                rect.offsetMax = new Vector2(0f, -(index * RowHeight));
             }
+            UpdateContentHeight(data.SellItems.Count);
+        }
+
+        private void UpdateContentHeight(int rowCount)
+        {
+            if (listRoot == null) return;
+            listRoot.sizeDelta = new Vector2(0f, rowCount * RowHeight);
+            listRoot.anchoredPosition = Vector2.zero;
         }
 
         private void EnsureBuilt()
@@ -263,15 +282,60 @@ namespace BorderValley.UI.World
                 new Vector2(0.92f, 0.71f),
                 () => CloseRequested?.Invoke());
 
-            var list = new GameObject("List", typeof(RectTransform));
-            list.transform.SetParent(panelRoot.transform, false);
-            listRoot = list.GetComponent<RectTransform>();
-            listRoot.anchorMin = new Vector2(0.08f, 0.08f);
-            listRoot.anchorMax = new Vector2(0.92f, 0.6f);
-            listRoot.offsetMin = Vector2.zero;
-            listRoot.offsetMax = Vector2.zero;
+            CreateListScroll(panelRoot.transform);
             activeTab = ShopTab.Buy;
             panelRoot.SetActive(false);
+        }
+
+        private void CreateListScroll(Transform parent)
+        {
+            var scrollObject = new GameObject(
+                "ListScroll",
+                typeof(RectTransform),
+                typeof(Image),
+                typeof(ScrollRect));
+            scrollObject.transform.SetParent(parent, false);
+            var scrollRect = scrollObject.GetComponent<RectTransform>();
+            scrollRect.anchorMin = new Vector2(0.08f, 0.08f);
+            scrollRect.anchorMax = new Vector2(0.92f, 0.6f);
+            scrollRect.offsetMin = Vector2.zero;
+            scrollRect.offsetMax = Vector2.zero;
+            var scrollImage = scrollObject.GetComponent<Image>();
+            scrollImage.color = new Color(0.08f, 0.11f, 0.18f, 0.85f);
+            scrollImage.raycastTarget = true;
+
+            var viewportObject = new GameObject(
+                "Viewport",
+                typeof(RectTransform),
+                typeof(Image),
+                typeof(RectMask2D));
+            viewportObject.transform.SetParent(scrollObject.transform, false);
+            viewportRoot = viewportObject.GetComponent<RectTransform>();
+            viewportRoot.anchorMin = Vector2.zero;
+            viewportRoot.anchorMax = Vector2.one;
+            viewportRoot.offsetMin = Vector2.zero;
+            viewportRoot.offsetMax = Vector2.zero;
+            var viewportImage = viewportObject.GetComponent<Image>();
+            viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+            viewportImage.raycastTarget = true;
+
+            var content = new GameObject("List", typeof(RectTransform));
+            content.transform.SetParent(viewportObject.transform, false);
+            listRoot = content.GetComponent<RectTransform>();
+            listRoot.anchorMin = new Vector2(0f, 1f);
+            listRoot.anchorMax = new Vector2(1f, 1f);
+            listRoot.pivot = new Vector2(0.5f, 1f);
+            listRoot.offsetMin = Vector2.zero;
+            listRoot.offsetMax = Vector2.zero;
+            listRoot.sizeDelta = Vector2.zero;
+
+            listScroll = scrollObject.GetComponent<ScrollRect>();
+            listScroll.viewport = viewportRoot;
+            listScroll.content = listRoot;
+            listScroll.horizontal = false;
+            listScroll.vertical = true;
+            listScroll.movementType = ScrollRect.MovementType.Clamped;
+            listScroll.scrollSensitivity = 24f;
         }
 
         private static void RemoveButtonListeners(Button button)

@@ -103,7 +103,8 @@ namespace BorderValley.PlayModeTests
             var entry = quests.GetJournal().Single(value => value.QuestId == MainQuestId);
             Assert.That(entry.State, Is.EqualTo(QuestState.Active));
             Assert.That(entry.Objectives, Is.Not.Empty);
-            Assert.That(entry.Objectives.Any(value => value.TargetId == "enemy.bandit"), Is.True);
+            Assert.That(entry.Objectives.Single().ObjectiveId, Is.EqualTo("objective.main.boss"));
+            Assert.That(entry.Objectives.Single().TargetId, Is.EqualTo("enemy.crypt_boss"));
         }
 
         [UnityTest]
@@ -198,7 +199,7 @@ namespace BorderValley.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator BanditEncounter_VictoryReturnsToWorld_AndAdvancesQuestAndLoot()
+        public IEnumerator BanditEncounter_VictoryReturnsToWorld_WithoutAdvancingMainQuest()
         {
             yield return LoadWorld();
             var controller = GetController();
@@ -211,7 +212,7 @@ namespace BorderValley.PlayModeTests
             yield return AcceptMainQuest(controller);
             var objective = quests.GetJournal()
                 .Single(value => value.QuestId == MainQuestId)
-                .Objectives.Single(value => value.TargetId == "enemy.bandit");
+                .Objectives.Single(value => value.TargetId == "enemy.crypt_boss");
             var objectiveId = objective.ObjectiveId;
 
             var villageExit = FindAreaExit(VillageId, ForestId);
@@ -238,10 +239,118 @@ namespace BorderValley.PlayModeTests
             Assert.That(flow.TryTakeResult(out _), Is.False);
             Assert.That(controller.LastBattleResultKey, Is.EqualTo("battle.result.player_victory"));
             Assert.That(
+                quests.GetJournal().Single(value => value.QuestId == MainQuestId).State,
+                Is.EqualTo(QuestState.Active));
+            Assert.That(
                 state.GetObjectiveProgress(MainQuestId, objectiveId),
-                Is.GreaterThanOrEqualTo(1));
+                Is.EqualTo(0));
             Assert.That(inventory.Gold, Is.GreaterThan(goldBefore));
             Assert.That(inventory.Items.Count, Is.GreaterThan(itemsBefore));
+        }
+
+        [UnityTest]
+        public IEnumerator MainQuest_BossTurnInRewardsOnceAndPersistsCompletion()
+        {
+            yield return LoadWorld();
+            var controller = GetController();
+            var context = GameBootstrapper.Context;
+            var quests = context.Get<QuestService>();
+            var state = context.Get<NarrativeStateService>();
+            var inventory = context.Get<InventoryService>();
+            var save = context.Get<SaveService>();
+
+            yield return AcceptMainQuest(controller);
+            var boss = FindArea("area.crypt").Encounters
+                .Single(value => value.EncounterId == "encounter.crypt.boss");
+            yield return CompleteEncounter(controller, boss);
+            controller = GetController();
+
+            var bossObjectiveId = quests.GetJournal()
+                .Single(value => value.QuestId == MainQuestId)
+                .Objectives.Single()
+                .ObjectiveId;
+            Assert.That(state.GetObjectiveProgress(MainQuestId, bossObjectiveId), Is.EqualTo(1));
+            Assert.That(
+                quests.GetJournal().Single(value => value.QuestId == MainQuestId).State,
+                Is.EqualTo(QuestState.ReadyToTurnIn));
+
+            var goldBeforeTurnIn = inventory.Gold;
+            var elder = FindNpcInteractable(VillageId, ElderId);
+            yield return MoveNear(controller, elder.Position);
+            ClickInteract(controller);
+            Assert.That(controller.DialoguePresenter.SelectChoice(0), Is.True);
+            Assert.That(
+                quests.GetJournal().Single(value => value.QuestId == MainQuestId).State,
+                Is.EqualTo(QuestState.Completed));
+            Assert.That(inventory.Gold, Is.EqualTo(goldBeforeTurnIn + 100));
+            controller.DialoguePresenter.Close();
+
+            controller.HandleApplicationPause(true);
+            var savedGold = inventory.Gold;
+            inventory.AddGold(7);
+            Assert.That(save.Load(0), Is.True);
+            Assert.That(inventory.Gold, Is.EqualTo(savedGold));
+
+            yield return MoveNear(controller, elder.Position);
+            ClickInteract(controller);
+            Assert.That(controller.DialoguePresenter.SelectChoice(0), Is.True);
+            Assert.That(inventory.Gold, Is.EqualTo(savedGold));
+            Assert.That(
+                quests.GetJournal().Single(value => value.QuestId == MainQuestId).State,
+                Is.EqualTo(QuestState.Completed));
+        }
+
+        [UnityTest]
+        public IEnumerator SideQuest_TurnInRewardsOnceAndPersistsForRangerAndSurvivor()
+        {
+            yield return LoadWorld();
+            var controller = GetController();
+            var context = GameBootstrapper.Context;
+            var quests = context.Get<QuestService>();
+            var inventory = context.Get<InventoryService>();
+            var save = context.Get<SaveService>();
+
+            var cases = new[]
+            {
+                (NpcId: "npc.ranger_companion", QuestId: "quest.side.ranger", AreaId: "area.watchtower", EncounterId: "encounter.watchtower.rangers", Reward: 40),
+                (NpcId: "npc.survivor", QuestId: "quest.side.survivor", AreaId: "area.forest", EncounterId: "encounter.forest.bandits", Reward: 35)
+            };
+
+            foreach (var value in cases)
+            {
+                yield return AcceptSideQuest(controller, value.NpcId, value.QuestId);
+                var encounter = FindArea(value.AreaId).Encounters
+                    .Single(candidate => candidate.EncounterId == value.EncounterId);
+                yield return CompleteEncounter(controller, encounter);
+                controller = GetController();
+
+                Assert.That(
+                    quests.GetJournal().Single(entry => entry.QuestId == value.QuestId).State,
+                    Is.EqualTo(QuestState.ReadyToTurnIn));
+
+                var goldBeforeTurnIn = inventory.Gold;
+                Assert.That(controller.OpenDialogue(value.NpcId), Is.True);
+                Assert.That(controller.DialoguePresenter.SelectChoice(0), Is.True);
+                Assert.That(
+                    quests.GetJournal().Single(entry => entry.QuestId == value.QuestId).State,
+                    Is.EqualTo(QuestState.Completed));
+                Assert.That(inventory.Gold, Is.EqualTo(goldBeforeTurnIn + value.Reward));
+                controller.DialoguePresenter.Close();
+
+                controller.HandleApplicationPause(true);
+                var savedGold = inventory.Gold;
+                inventory.AddGold(7);
+                Assert.That(save.Load(0), Is.True);
+                Assert.That(inventory.Gold, Is.EqualTo(savedGold));
+
+                Assert.That(controller.OpenDialogue(value.NpcId), Is.True);
+                Assert.That(controller.DialoguePresenter.SelectChoice(0), Is.True);
+                Assert.That(inventory.Gold, Is.EqualTo(savedGold));
+                Assert.That(
+                    quests.GetJournal().Single(entry => entry.QuestId == value.QuestId).State,
+                    Is.EqualTo(QuestState.Completed));
+                controller.DialoguePresenter.Close();
+            }
         }
 
         [UnityTest]
@@ -262,10 +371,10 @@ namespace BorderValley.PlayModeTests
             var quests = context.Get<QuestService>();
             var state = context.Get<NarrativeStateService>();
             var save = context.Get<SaveService>();
-            yield return AcceptMainQuest(controller);
+            yield return AcceptSideQuest(controller, "npc.survivor", "quest.side.survivor");
 
             var objectiveId = quests.GetJournal()
-                .Single(value => value.QuestId == MainQuestId)
+                .Single(value => value.QuestId == "quest.side.survivor")
                 .Objectives.Single(value => value.TargetId == "enemy.bandit")
                 .ObjectiveId;
             for (var index = 0; index < inventory.Capacity; index++)
@@ -307,7 +416,7 @@ namespace BorderValley.PlayModeTests
 
             var goldBeforeSettlement = inventory.Gold;
             var experienceBeforeSettlement = progression.TotalExperience;
-            var questProgressBeforeSettlement = state.GetObjectiveProgress(MainQuestId, objectiveId);
+            var questProgressBeforeSettlement = state.GetObjectiveProgress("quest.side.survivor", objectiveId);
             var loadsBeforeBlockedEncounter = recordingLoader.LoadedScenes.Count;
 
             Assert.That(controller.InteractButton.interactable, Is.False);
@@ -323,7 +432,7 @@ namespace BorderValley.PlayModeTests
             var goldBeforePause = inventory.Gold;
             var itemsBeforePause = inventory.Items.Count;
             var experienceBeforePause = progression.TotalExperience;
-            var questProgressBeforePause = state.GetObjectiveProgress(MainQuestId, objectiveId);
+            var questProgressBeforePause = state.GetObjectiveProgress("quest.side.survivor", objectiveId);
             var settlementCountBeforePause = controller.SettlementCount;
             var attemptsBeforePause = controller.AutosaveAttemptCount;
 
@@ -371,8 +480,8 @@ namespace BorderValley.PlayModeTests
             Assert.That(inventory.Gold, Is.GreaterThan(goldBeforeSettlement));
             Assert.That(progression.TotalExperience, Is.GreaterThan(experienceBeforeSettlement));
             Assert.That(
-                state.GetObjectiveProgress(MainQuestId, objectiveId),
-                Is.EqualTo(questProgressBeforeSettlement + 1));
+                state.GetObjectiveProgress("quest.side.survivor", objectiveId),
+                Is.EqualTo(questProgressBeforeSettlement + 2));
             Assert.That(recordingLoader.LoadedScenes.Count, Is.EqualTo(loadsBeforeBlockedEncounter));
 
             Assert.That(controller.InteractButton.interactable, Is.True);
@@ -559,6 +668,40 @@ namespace BorderValley.PlayModeTests
             var dialogue = Object.FindAnyObjectByType<DialoguePanelView>();
             FindButton(dialogue, "Choice_0").onClick.Invoke();
             FindButton(dialogue, "Close").onClick.Invoke();
+        }
+
+        private static IEnumerator AcceptSideQuest(
+            WorldExplorationController controller,
+            string npcId,
+            string questId)
+        {
+            Assert.That(controller.OpenDialogue(npcId), Is.True);
+            Assert.That(controller.DialoguePresenter.SelectChoice(0), Is.True);
+            Assert.That(
+                GameBootstrapper.Context.Get<QuestService>()
+                    .GetJournal().Single(entry => entry.QuestId == questId).State,
+                Is.EqualTo(QuestState.Active));
+            controller.DialoguePresenter.Close();
+            yield return null;
+        }
+
+        private static IEnumerator CompleteEncounter(
+            WorldExplorationController controller,
+            WorldEncounterDefinition encounter)
+        {
+            Assert.That(
+                controller.BeginEncounter(encounter),
+                Is.True,
+                encounter.EncounterId + " lastError=" + controller.LastErrorKey);
+            yield return WaitForScene("Battle");
+            yield return null;
+
+            var battle = Object.FindAnyObjectByType<BattleSceneController>();
+            Assert.That(battle, Is.Not.Null, encounter.EncounterId);
+            KillAllEnemies(battle);
+            Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
         }
 
         private static IEnumerator MoveNear(WorldExplorationController controller, Vector2 target)

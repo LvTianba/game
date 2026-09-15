@@ -98,6 +98,73 @@ namespace BorderValley.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator BattleScene_EveryEncounter_UsesRequestedEnemyFormationAndReportsDefeatedEnemyIds()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+
+            var context = GameBootstrapper.Context;
+            var flow = context.Get<IBattleFlow>();
+            var originalLoader = context.Get<ISceneLoader>();
+            context.Register<ISceneLoader>(new RecordingSceneLoader());
+
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            var encounters = catalog.All
+                .OfType<WorldEncounterDefinition>()
+                .OrderBy(value => value.EncounterId, System.StringComparer.Ordinal)
+                .ToArray();
+
+            foreach (var encounter in encounters)
+            {
+                var party = context.Get<BorderValley.Inventory.PartyBattleSnapshotBuilder>()
+                    .BuildPartySnapshot();
+                flow.BeginBattle(BorderValley.World.WorldEncounterService.BuildRequest(
+                    encounter,
+                    party,
+                    "formation:" + encounter.EncounterId,
+                    "World"));
+
+                yield return SceneManager.LoadSceneAsync("Battle");
+                yield return null;
+
+                var controller = Object.FindAnyObjectByType<BattleSceneController>();
+                Assert.That(controller, Is.Not.Null, encounter.EncounterId);
+                var enemies = controller.EngineForTests.State.Units
+                    .Where(unit => unit.Team == Team.Enemy)
+                    .ToArray();
+                Assert.That(
+                    enemies.Select(unit => unit.DefinitionId),
+                    Is.EqualTo(encounter.EnemyDefinitionIds),
+                    encounter.EncounterId);
+                Assert.That(
+                    enemies.Select(unit => unit.Id),
+                    Is.Unique,
+                    encounter.EncounterId);
+
+                if (encounter.EncounterId == "encounter.crypt.boss")
+                {
+                    Assert.That(
+                        encounter.EnemyDefinitionIds,
+                        Is.EqualTo(new[] { "enemy.crypt_boss" }),
+                        "The boss encounter must use the unique boss definition.");
+                    Assert.That(enemies.Single().DefinitionId, Is.EqualTo("enemy.crypt_boss"));
+                }
+
+                KillAllEnemies(controller);
+                Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
+
+                Assert.That(flow.TryTakeResult(out var result), Is.True, encounter.EncounterId);
+                Assert.That(
+                    result.DefeatedEnemyIds,
+                    Is.EqualTo(encounter.EnemyDefinitionIds),
+                    encounter.EncounterId);
+            }
+
+            context.Register<ISceneLoader>(originalLoader);
+        }
+
+        [UnityTest]
         public IEnumerator BattleScene_RendersCoreScenario()
         {
             yield return SceneManager.LoadSceneAsync("Battle");
@@ -284,6 +351,18 @@ namespace BorderValley.PlayModeTests
             var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
             Assert.That(catalog, Is.Not.Null);
             return catalog.All.OfType<WorldEncounterDefinition>().Single(value => value.EncounterId == encounterId);
+        }
+
+        private static void KillAllEnemies(BattleSceneController controller)
+        {
+            foreach (var enemy in controller.EngineForTests.State.Units
+                         .Where(unit => unit.Team == Team.Enemy)
+                         .ToArray())
+            {
+                enemy.ApplyRawDamage(int.MaxValue);
+            }
+
+            controller.EngineForTests.Execute(null);
         }
 
         private sealed class RecordingSceneLoader : ISceneLoader

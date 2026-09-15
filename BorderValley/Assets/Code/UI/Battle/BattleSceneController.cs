@@ -46,18 +46,18 @@ namespace BorderValley.UI.Battle
 
             BattlePartySnapshot partySnapshot = null;
             var seed = DebugSeed;
+            string scenarioId = null;
             if (flow.TryTakeRequest(out var request))
             {
                 seed = request.Seed;
+                scenarioId = request.ScenarioId;
                 returnScene = request.ReturnScene;
                 partySnapshot = request.PartySnapshot;
                 battleContext = request.Context;
             }
 
             presenter = new BattleUiPresenter(
-                partySnapshot == null
-                    ? BattleScenarioFactory.CreateCoreScenario()
-                    : BattleScenarioFactory.CreateCoreScenario(partySnapshot),
+                BattleScenarioFactory.CreateScenario(partySnapshot, battleContext, scenarioId),
                 RandomSourceFactory.FromSeed(seed));
 
             var root = new GameObject(
