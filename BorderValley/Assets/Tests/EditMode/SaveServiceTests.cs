@@ -48,6 +48,65 @@ namespace BorderValley.Core.Tests
         }
 
         [Test]
+        public void Load_WhenPrimaryCorrupt_PrefersNewerBackupOverOlderPrevious()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "Oldest");
+            var primary = service.GetPrimaryPathForTests(0);
+            var oldestFixture = primary + ".fixture";
+            File.Copy(primary, oldestFixture, true);
+
+            participant.Value = 2;
+            service.Save(0, "NewerBackup");
+            File.Copy(primary, primary + ".bak", true);
+            File.Copy(oldestFixture, primary + ".previous", true);
+            File.WriteAllText(primary, "{broken");
+
+            participant.Reset();
+            Assert.That(service.HasSave(0), Is.True);
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(2));
+            Assert.That(participant.CurrentScene, Is.EqualTo("NewerBackup"));
+        }
+
+        [Test]
+        public void Load_WhenPrimaryAndPreviousExist_UsesPrimary()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "Old");
+            var primary = service.GetPrimaryPathForTests(0);
+            var oldFixture = primary + ".fixture";
+            File.Copy(primary, oldFixture, true);
+
+            participant.Value = 2;
+            service.Save(0, "New");
+            File.Copy(oldFixture, primary + ".previous", true);
+
+            participant.Reset();
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(2));
+            Assert.That(participant.CurrentScene, Is.EqualTo("New"));
+        }
+
+        [Test]
+        public void Load_WhenOnlyBackupPreviousSnapshotExists_UsesIt()
+        {
+            var participant = new FakeParticipant { Value = 9 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "Recovery");
+            var primary = service.GetPrimaryPathForTests(0);
+            File.Move(primary, primary + ".bak.previous");
+
+            participant.Reset();
+            Assert.That(service.HasSave(0), Is.True);
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(9));
+            Assert.That(participant.CurrentScene, Is.EqualTo("Recovery"));
+        }
+
+        [Test]
         public void Load_WhenPrimaryPayloadFailsSemantically_RollsBackAndUsesBackup()
         {
             var first = new FakeParticipant { ParticipantKey = "first", Value = 11 };
@@ -203,6 +262,39 @@ namespace BorderValley.Core.Tests
             Assert.Throws<IOException>(() => service.Save(0, "Third"));
             AssertNoCommitTemps(primary, backup);
             AssertPrimaryAndBackup(service, participant, 2, "Second", 1, "First");
+        }
+
+        [Test]
+        public void Save_WhenPreviousCleanupDeleteFails_StillCommitsNewPrimary()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "First");
+            var primary = service.GetPrimaryPathForTests(0);
+            var previousPrimary = primary + ".previous";
+            var previousBackup = primary + ".bak.previous";
+            File.WriteAllText(previousPrimary, "{stale-primary");
+            File.WriteAllText(previousBackup, "{stale-backup");
+
+            var operations = new FaultInjectingSaveCommitOperations
+            {
+                DeleteFault = path =>
+                    string.Equals(path, previousPrimary, StringComparison.Ordinal) ||
+                    string.Equals(path, previousBackup, StringComparison.Ordinal)
+                        ? new IOException("forced delete failure")
+                        : null
+            };
+
+            participant.Value = 2;
+            var faultedService = new SaveService(root, new[] { participant }, operations);
+            Assert.DoesNotThrow(() => faultedService.Save(0, "Second"));
+            Assert.That(File.Exists(previousPrimary), Is.False);
+            Assert.That(File.Exists(previousBackup), Is.False);
+
+            participant.Reset();
+            Assert.That(faultedService.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(2));
+            Assert.That(participant.CurrentScene, Is.EqualTo("Second"));
         }
 
         [Test]
@@ -441,6 +533,7 @@ namespace BorderValley.Core.Tests
             private readonly ISaveFileCommitOperations inner = new SystemSaveFileCommitOperations();
 
             public Func<string, string, bool, Exception> CopyFault { get; set; }
+            public Func<string, Exception> DeleteFault { get; set; }
             public Func<string, string, bool, Exception> MoveFault { get; set; }
             public Func<string, string, string, Exception> ReplaceFault { get; set; }
 
@@ -448,6 +541,13 @@ namespace BorderValley.Core.Tests
             {
                 ThrowIfFaulted(CopyFault, source, destination, overwrite);
                 inner.Copy(source, destination, overwrite);
+            }
+
+            public void Delete(string path)
+            {
+                var exception = DeleteFault?.Invoke(path);
+                if (exception != null) throw exception;
+                inner.Delete(path);
             }
 
             public void Move(string source, string destination, bool overwrite)

@@ -16,6 +16,7 @@ namespace BorderValley.Core.Persistence
     internal interface ISaveFileCommitOperations
     {
         void Copy(string source, string destination, bool overwrite);
+        void Delete(string path);
         void Move(string source, string destination, bool overwrite);
         void Replace(string source, string destination, string backup);
     }
@@ -27,6 +28,8 @@ namespace BorderValley.Core.Persistence
 
         public void Copy(string source, string destination, bool overwrite) =>
             File.Copy(source, destination, overwrite);
+
+        public void Delete(string path) => File.Delete(path);
 
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
         public void Move(string source, string destination, bool overwrite)
@@ -105,11 +108,13 @@ namespace BorderValley.Core.Persistence
 
         public bool HasSave(int slot)
         {
-            var primary = GetPrimaryPath(slot);
-            return File.Exists(primary) ||
-                   File.Exists(primary + ".previous") ||
-                   File.Exists(primary + ".bak") ||
-                   File.Exists(primary + ".bak.previous");
+            foreach (var path in GetRecoveryPaths(slot))
+            {
+                if (File.Exists(path))
+                    return true;
+            }
+
+            return false;
         }
         public string GetPrimaryPathForTests(int slot) => GetPrimaryPath(slot);
 
@@ -119,6 +124,7 @@ namespace BorderValley.Core.Persistence
             var temporary = primary + ".tmp";
             var backup = primary + ".bak";
 
+            CleanupPreviousSnapshots(primary, backup);
             TryDeleteFile(temporary);
 
             try
@@ -182,15 +188,19 @@ namespace BorderValley.Core.Persistence
                 TryDeleteFile(temporary);
                 throw;
             }
+
+            CleanupPreviousSnapshots(primary, backup);
         }
 
         public bool Load(int slot)
         {
-            var primary = GetPrimaryPath(slot);
-            return TryRestoreFile(primary) ||
-                   TryRestoreFile(primary + ".previous") ||
-                   TryRestoreFile(primary + ".bak") ||
-                   TryRestoreFile(primary + ".bak.previous");
+            foreach (var path in GetRecoveryPaths(slot))
+            {
+                if (TryRestoreFile(path))
+                    return true;
+            }
+
+            return false;
         }
 
         public void Delete(int slot)
@@ -374,14 +384,52 @@ namespace BorderValley.Core.Persistence
                        JObject.FromObject(rightData.Participants));
         }
 
-        private static void TryDeleteFile(string path)
+        private void TryDeleteFile(string path)
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
+                if (File.Exists(path)) commitOperations.Delete(path);
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+
+        private IEnumerable<string> GetRecoveryPaths(int slot)
+        {
+            var primary = GetPrimaryPath(slot);
+            yield return primary;
+            yield return primary + ".bak";
+            yield return primary + ".previous";
+            yield return primary + ".bak.previous";
+        }
+
+        private void CleanupPreviousSnapshots(string primary, string backup)
+        {
+            CleanupPreviousSnapshot(primary + ".previous");
+            CleanupPreviousSnapshot(backup + ".previous");
+        }
+
+        private void CleanupPreviousSnapshot(string path)
+        {
+            TryDeleteFile(path);
+            if (!File.Exists(path))
+                return;
+
+            var quarantine = path + ".stale." + Guid.NewGuid().ToString("N");
+            try
+            {
+                commitOperations.Move(path, quarantine, false);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            TryDeleteFile(quarantine);
         }
 
         private void ReplaceWithValidatedBackup(
@@ -400,8 +448,6 @@ namespace BorderValley.Core.Persistence
             var primaryMoved = false;
 
             TryDeleteFile(backupTemporary);
-            TryDeleteFile(previousBackup);
-            TryDeleteFile(previousPrimary);
 
             try
             {
