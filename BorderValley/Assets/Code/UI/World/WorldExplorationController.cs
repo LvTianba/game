@@ -12,6 +12,7 @@ using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
+using BorderValley.Presentation;
 using BorderValley.UI.Inventory;
 using BorderValley.World;
 using UnityEngine;
@@ -45,6 +46,7 @@ namespace BorderValley.UI.World
         private IBattleFlow flow;
         private ISceneLoader loader;
         private SaveService save;
+        private IPresentationService presentation;
         private ContentCatalog catalog;
         private IReadOnlyDictionary<string, WorldAreaDefinition> areas;
         private IReadOnlyDictionary<string, WorldEncounterDefinition> encounters;
@@ -62,8 +64,10 @@ namespace BorderValley.UI.World
         private readonly HashSet<string> suppressedExitIds = new(StringComparer.Ordinal);
         private QuestLogPanelView questLogView;
         private string pendingBattleResultKey = string.Empty;
+        private WorldFacing playerFacing = WorldFacing.South;
 
         public GameObject Player { get; private set; }
+        public SpriteAnimator PlayerAnimator { get; private set; }
         public VirtualJoystick Joystick { get; private set; }
         public WorldMapView MapView { get; private set; }
         public Button InteractButton { get; private set; }
@@ -102,7 +106,7 @@ namespace BorderValley.UI.World
             context = GameBootstrapper.Context;
             if (context == null)
             {
-                LastErrorKey = "world.ui.error.service_unavailable";
+                SetError("world.ui.error.service_unavailable");
                 return;
             }
 
@@ -123,6 +127,8 @@ namespace BorderValley.UI.World
                 flow = context.Get<IBattleFlow>();
                 loader = context.Get<ISceneLoader>();
                 save = context.Get<SaveService>();
+                if (!context.TryGet<IPresentationService>(out presentation) || presentation == null)
+                    presentation = new NullPresentationService();
                 catalog = context.Get<ContentCatalog>();
                 areas = catalog.All
                     .OfType<WorldAreaDefinition>()
@@ -136,7 +142,7 @@ namespace BorderValley.UI.World
             }
             catch (InvalidOperationException)
             {
-                LastErrorKey = "world.ui.error.service_unavailable";
+                SetError("world.ui.error.service_unavailable");
                 return;
             }
 
@@ -147,6 +153,7 @@ namespace BorderValley.UI.World
             var startPosition = ResolveStartPosition(startArea);
             if (!EnterArea(startArea, startPosition, false))
                 return;
+            PlayAreaMusic(startArea);
             TrySaveWorld();
             AutosaveAttemptCount = 0;
             initialized = true;
@@ -160,11 +167,13 @@ namespace BorderValley.UI.World
             mapObject.transform.SetParent(transform, false);
             MapView = mapObject.GetComponent<WorldMapView>();
 
-            Player = new GameObject("Player", typeof(SpriteRenderer));
+            Player = new GameObject("Player", typeof(SpriteRenderer), typeof(SpriteAnimator));
             Player.transform.SetParent(transform, false);
             var renderer = Player.GetComponent<SpriteRenderer>();
-            renderer.sprite = CreateWhiteSprite();
-            renderer.color = new Color(0.95f, 0.82f, 0.25f, 1f);
+            PlayerAnimator = Player.GetComponent<SpriteAnimator>();
+            PlayerAnimator.Play(presentation.GetVisualClip(
+                WorldAnimationSelector.BuildClipId(playerFacing, false)));
+            renderer.color = Color.white;
             renderer.sortingOrder = 10;
         }
 
@@ -247,8 +256,14 @@ namespace BorderValley.UI.World
                 affixDefinitions,
                 economy,
                 _ => TrySaveWorld());
-            DialoguePresenter = new DialogueUiPresenter(dialogueService, dialogueView);
-            ShopPresenter = new ShopUiPresenter(shopService, inventory, economy, narrative, shopView);
+            DialoguePresenter = new DialogueUiPresenter(dialogueService, dialogueView, presentation);
+            ShopPresenter = new ShopUiPresenter(
+                shopService,
+                inventory,
+                economy,
+                narrative,
+                shopView,
+                presentation);
             QuestLogPresenter = new QuestLogPresenter(quests, questLogView);
             dialogueView.ChoiceSelected += OnDialogueChoiceSelected;
             dialogueView.CloseRequested += OnDialogueClosed;
@@ -271,6 +286,7 @@ namespace BorderValley.UI.World
             if (battleStarted || IsUiOpen)
                 return;
 
+            var positionBefore = PlayerPosition;
             var remaining = Mathf.Clamp(deltaTime, 0f, 0.25f);
             while (remaining > 0f)
             {
@@ -285,7 +301,7 @@ namespace BorderValley.UI.World
                 {
                     if (!SetPlayerPosition(next))
                     {
-                        LastErrorKey = WorldTextKeys.InvalidPosition;
+                        SetError(WorldTextKeys.InvalidPosition);
                         return;
                     }
                 }
@@ -293,6 +309,8 @@ namespace BorderValley.UI.World
                 remaining -= step;
             }
 
+            var moved = (PlayerPosition - positionBefore).sqrMagnitude > 0.000001f;
+            UpdatePlayerAnimation(Joystick.Value, moved);
             FollowCamera();
             RefreshInteractionState();
         }
@@ -343,7 +361,7 @@ namespace BorderValley.UI.World
                 return false;
             }
 
-            DialoguePresenter.Close();
+            DialoguePresenter.Close(false);
             RefreshInteractionState();
             return true;
         }
@@ -355,7 +373,7 @@ namespace BorderValley.UI.World
                 return false;
             if (HasPendingSettlement)
             {
-                LastErrorKey = WorldTextKeys.PendingSettlement;
+                SetError(WorldTextKeys.PendingSettlement);
                 return false;
             }
             if (encounter == null)
@@ -377,6 +395,7 @@ namespace BorderValley.UI.World
             flow.BeginBattle(request);
             battleStarted = true;
             InteractButton.interactable = false;
+            presentation.PlaySfx("sfx.world.encounter");
             _ = loader.LoadAsync("Battle");
             return true;
         }
@@ -499,7 +518,7 @@ namespace BorderValley.UI.World
                 context.Get<ItemDropTableDefinition>());
             if (!settlementService.Settle(result, encounter, out var settlement))
             {
-                LastErrorKey = settlement.ErrorKey;
+                SetError(settlement.ErrorKey);
                 return false;
             }
 
@@ -578,6 +597,7 @@ namespace BorderValley.UI.World
         private void OpenQuestLog()
         {
             QuestLogPresenter.Open();
+            presentation.PlaySfx("sfx.ui.click");
             RefreshInteractionState();
         }
 
@@ -597,15 +617,20 @@ namespace BorderValley.UI.World
         {
             if (progression == null)
             {
-                LastErrorKey = InventoryTextKeys.ServiceUnavailable;
+                SetError(InventoryTextKeys.ServiceUnavailable);
                 return;
             }
 
             progression.RecoverOutOfCombat(10);
             TrySaveWorld();
+            presentation.PlaySfx("sfx.world.reward");
         }
 
-        private void OnQuestLogClosed() => RefreshInteractionState();
+        private void OnQuestLogClosed()
+        {
+            presentation.PlaySfx("sfx.ui.cancel");
+            RefreshInteractionState();
+        }
 
         private bool SwitchArea(string areaId, Vector2 arrivalPosition, string sourceAreaId)
         {
@@ -615,6 +640,8 @@ namespace BorderValley.UI.World
             if (!EnterArea(area, ClampToArea(area, arrivalPosition), true))
                 return false;
             SuppressArrivalExit(currentArea, PlayerPosition, sourceAreaId);
+            PlayAreaMusic(area);
+            presentation.PlaySfx("sfx.ui.confirm");
             RefreshInteractionState();
             return true;
         }
@@ -623,7 +650,7 @@ namespace BorderValley.UI.World
         {
             if (area == null)
             {
-                LastErrorKey = WorldTextKeys.InvalidPosition;
+                SetError(WorldTextKeys.InvalidPosition);
                 return false;
             }
 
@@ -632,10 +659,10 @@ namespace BorderValley.UI.World
             if (!SetPlayerPosition(ClampToArea(area, position)))
             {
                 currentArea = previousArea;
-                LastErrorKey = WorldTextKeys.InvalidPosition;
+                SetError(WorldTextKeys.InvalidPosition);
                 return false;
             }
-            MapView.Render(area, narrative);
+            MapView.Render(area, narrative, presentation);
             FollowCamera();
             if (saveAfter)
                 TrySaveWorld();
@@ -680,7 +707,20 @@ namespace BorderValley.UI.World
         private void RefreshMap()
         {
             if (currentArea != null)
-                MapView.Render(currentArea, narrative);
+                MapView.Render(currentArea, narrative, presentation);
+        }
+
+        private void UpdatePlayerAnimation(Vector2 input, bool moved)
+        {
+            if (PlayerAnimator == null || presentation == null)
+                return;
+
+            if (WorldAnimationSelector.IsMoving(input))
+                playerFacing = WorldAnimationSelector.Resolve(input);
+
+            var moving = moved && WorldAnimationSelector.IsMoving(input);
+            PlayerAnimator.PlayIfChanged(presentation.GetVisualClip(
+                WorldAnimationSelector.BuildClipId(playerFacing, moving)));
         }
 
         private bool GrantInteractable(WorldInteractionResult interaction)
@@ -695,7 +735,7 @@ namespace BorderValley.UI.World
                     Array.Empty<AffixInstance>());
                 if (!inventory.TryAdd(item, out var error))
                 {
-                    LastErrorKey = error;
+                    SetError(error);
                     return false;
                 }
             }
@@ -704,7 +744,7 @@ namespace BorderValley.UI.World
                 var table = ResolveRewardTable(interaction.TargetId);
                 if (table == null)
                 {
-                    LastErrorKey = WorldBattleSettlementResult.MissingRewardTableKey;
+                    SetError(WorldBattleSettlementResult.MissingRewardTableKey);
                     return false;
                 }
 
@@ -715,7 +755,7 @@ namespace BorderValley.UI.World
                     RandomSourceFactory.FromSeed("world-reward:" + interaction.DefinitionId));
                 if (!inventory.TryAdd(reward, out var error))
                 {
-                    LastErrorKey = error;
+                    SetError(error);
                     return false;
                 }
             }
@@ -724,6 +764,7 @@ namespace BorderValley.UI.World
                 return false;
             TrySaveWorld();
             RefreshInteractionState();
+            presentation.PlaySfx("sfx.world.reward");
             return true;
         }
 
@@ -731,7 +772,7 @@ namespace BorderValley.UI.World
         {
             if (!narrative.SetEvent(interaction.TargetId))
             {
-                LastErrorKey = NarrativeTextKeys.UnknownEvent;
+                SetError(NarrativeTextKeys.UnknownEvent);
                 return false;
             }
             if (!narrative.MarkInteractableResolved(interaction.DefinitionId))
@@ -819,9 +860,24 @@ namespace BorderValley.UI.World
             }
             catch (Exception)
             {
-                LastErrorKey = InventoryTextKeys.AutoSaveFailed;
+                SetError(InventoryTextKeys.AutoSaveFailed);
                 return false;
             }
+        }
+
+        private void PlayAreaMusic(WorldAreaDefinition area)
+        {
+            if (area == null)
+                return;
+            var cueId = presentation.GetAreaMusicCueId(area.Id);
+            if (!string.IsNullOrWhiteSpace(cueId))
+                presentation.PlayMusic(cueId);
+        }
+
+        private void SetError(string errorKey)
+        {
+            LastErrorKey = errorKey;
+            presentation?.PlaySfx("sfx.ui.error");
         }
 
         private static void EnsureEventSystem()
@@ -891,10 +947,5 @@ namespace BorderValley.UI.World
             return font != null ? font : Resources.GetBuiltinResource<Font>("Arial.ttf");
         }
 
-        private static Sprite CreateWhiteSprite() => Sprite.Create(
-            Texture2D.whiteTexture,
-            new Rect(0f, 0f, 1f, 1f),
-            new Vector2(0.5f, 0.5f),
-            1f);
     }
 }

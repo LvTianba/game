@@ -330,7 +330,12 @@ namespace BorderValley.UI.Battle
             rect.pivot = pivot;
             rect.anchoredPosition = anchoredPosition;
             rect.sizeDelta = sizeDelta;
-            root.GetComponent<Image>().color = color;
+            var image = root.GetComponent<Image>();
+            image.color = color;
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyPanel(
+                image,
+                PresentationUiUtility.ResolvePanel(presentation));
             return root;
         }
 
@@ -357,6 +362,11 @@ namespace BorderValley.UI.Battle
             background.color = new Color(0.20f, 0.31f, 0.46f, 1f);
             var button = root.GetComponent<Button>();
             button.targetGraphic = background;
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyButton(
+                button,
+                PresentationUiUtility.ResolveButton(presentation),
+                PresentationUiUtility.ResolvePressedButton(presentation));
 
             var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
             labelObject.transform.SetParent(root.transform, false);

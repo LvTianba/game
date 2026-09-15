@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BorderValley.Core.Random;
 using BorderValley.Data.Items;
+using BorderValley.Presentation;
 using UnityEngine;
 using UnityEngine.UI;
 using InventorySystem = BorderValley.Inventory;
@@ -20,7 +21,9 @@ namespace BorderValley.UI.Inventory
         private const int PageSize = 12;
         private readonly List<Button> itemButtons = new();
         private readonly List<Text> itemLabels = new();
+        private readonly List<Image> itemIcons = new();
         private readonly List<Text> equipmentLabels = new();
+        private readonly List<Image> equipmentIcons = new();
         private GameObject panelRoot;
         private Text goldLabel;
         private Text oreLabel;
@@ -39,6 +42,7 @@ namespace BorderValley.UI.Inventory
         private InventorySystem.CraftingCosts costs;
         private IReadOnlyDictionary<string, AffixDefinition> affixDefinitions;
         private Func<string, bool> save;
+        private IPresentationService presentation;
         private Text memberLabel;
         private Text lockLabel;
         private int page;
@@ -61,7 +65,8 @@ namespace BorderValley.UI.Inventory
             InventorySystem.CraftingCosts costs,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions,
             InventorySystem.EconomyService economy = null,
-            Func<string, bool> save = null)
+            Func<string, bool> save = null,
+            IPresentationService presentation = null)
         {
             this.inventory = inventory;
             this.progression = progression;
@@ -71,6 +76,7 @@ namespace BorderValley.UI.Inventory
                 new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
             this.economy = economy;
             this.save = save;
+            this.presentation = presentation ?? PresentationUiUtility.GetOrNull();
             memberIndex = 0;
             lockIndex = 0;
             presenter?.Dispose();
@@ -83,7 +89,8 @@ namespace BorderValley.UI.Inventory
                     economy,
                     this.costs,
                     this.affixDefinitions,
-                    save);
+                    save,
+                    this.presentation);
             if (presenter != null)
             {
                 presenter.Changed += Refresh;
@@ -111,6 +118,7 @@ namespace BorderValley.UI.Inventory
             Mode = mode;
             if (panelRoot != null)
                 panelRoot.SetActive(true);
+            presentation?.PlaySfx("sfx.ui.click");
             Refresh();
         }
 
@@ -118,6 +126,7 @@ namespace BorderValley.UI.Inventory
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            presentation?.PlaySfx("sfx.ui.cancel");
         }
 
         private void Awake()
@@ -157,7 +166,15 @@ namespace BorderValley.UI.Inventory
             memberLabel = CreateText(panelRoot.transform, "Member", InventoryTextKeys.ActiveMember, 17, new Vector2(0.02f, 0.76f), new Vector2(0.14f, 0.81f), TextAnchor.MiddleLeft);
             CreateButton(panelRoot.transform, "NextMember", InventoryTextKeys.NextMember, new Vector2(0.15f, 0.76f), new Vector2(0.20f, 0.81f), CycleMember);
             for (var index = 0; index < 6; index++)
-                equipmentLabels.Add(CreateText(panelRoot.transform, "Equipment" + index, InventoryTextKeys.Empty, 18, new Vector2(0.02f, 0.75f - index * 0.09f), new Vector2(0.20f, 0.81f - index * 0.09f), TextAnchor.MiddleLeft));
+            {
+                equipmentLabels.Add(CreateText(panelRoot.transform, "Equipment" + index, InventoryTextKeys.Empty, 18, new Vector2(0.06f, 0.75f - index * 0.09f), new Vector2(0.20f, 0.81f - index * 0.09f), TextAnchor.MiddleLeft));
+                equipmentIcons.Add(CreateIcon(
+                    panelRoot.transform,
+                    "EquipmentIcon" + index,
+                    new Vector2(0.02f, 0.78f - index * 0.09f),
+                    Vector2.zero,
+                    new Vector2(32f, 32f)));
+            }
 
             CreateText(panelRoot.transform, "BagTitle", InventoryTextKeys.Details, 22, new Vector2(0.22f, 0.82f), new Vector2(0.72f, 0.87f), TextAnchor.MiddleLeft);
             for (var index = 0; index < PageSize; index++)
@@ -169,7 +186,18 @@ namespace BorderValley.UI.Inventory
                 var captured = index;
                 var button = CreateButton(panelRoot.transform, "Item" + index, InventoryTextKeys.Empty, min, max, () => SelectVisible(captured));
                 itemButtons.Add(button);
-                itemLabels.Add(button.GetComponentInChildren<Text>());
+                var label = button.GetComponentInChildren<Text>();
+                var labelRect = label.rectTransform;
+                labelRect.offsetMin = new Vector2(40f, 4f);
+                labelRect.offsetMax = new Vector2(-4f, -4f);
+                itemLabels.Add(label);
+                itemIcons.Add(CreateIcon(
+                    button.transform,
+                    "Icon",
+                    new Vector2(0f, 0.5f),
+                    new Vector2(4f, 0f),
+                    new Vector2(32f, 32f),
+                    new Vector2(0f, 0.5f)));
             }
 
             pageLabel = CreateText(panelRoot.transform, "Page", InventoryTextKeys.Page, 18, new Vector2(0.22f, 0.06f), new Vector2(0.48f, 0.12f), TextAnchor.MiddleCenter);
@@ -226,10 +254,14 @@ namespace BorderValley.UI.Inventory
                 var active = itemIndex < visible.Count;
                 itemButtons[index].gameObject.SetActive(active);
                 if (!active)
+                {
+                    SetItemIcon(itemIcons[index], null, default);
                     continue;
+                }
 
                 var item = visible[itemIndex];
                 var definition = inventory.Definitions[item.ItemDefinitionId];
+                SetItemIcon(itemIcons[index], item.ItemDefinitionId, definition.Slot);
                 var equipped = inventory.IsEquipped(item.InstanceId) ? " [" + InventoryTextKeys.EquippedMarker + "]" : string.Empty;
                 itemLabels[index].text = definition.LocalizationKey + " " + InventoryTextKeys.RarityKey(item.Rarity) + " " + InventoryTextKeys.ItemLevel + " " + item.ItemLevel + equipped;
             }
@@ -238,14 +270,27 @@ namespace BorderValley.UI.Inventory
             {
                 var slot = (ItemSlot)index;
                 var equipmentText = InventoryTextKeys.Empty;
+                ItemDefinition equippedDefinition = null;
                 if (inventory.GetEquipped(ActiveMemberId).TryGetValue(slot, out var instanceId))
                 {
                     var item = inventory.Items.FirstOrDefault(value => value.InstanceId == instanceId);
                     equipmentText = item == null
                         ? instanceId
                         : inventory.Definitions[item.ItemDefinitionId].LocalizationKey + " " + instanceId;
+                    if (item != null)
+                        inventory.Definitions.TryGetValue(item.ItemDefinitionId, out equippedDefinition);
                 }
                 equipmentLabels[index].text = SlotKey(slot) + ": " + equipmentText;
+                if (equippedDefinition == null)
+                {
+                    equipmentIcons[index].sprite = null;
+                }
+                else
+                {
+                    equipmentIcons[index].sprite = Presentation?.GetItemIcon(
+                        equippedDefinition.Id,
+                        PresentationUiUtility.ResolveItemSlotId(equippedDefinition.Slot));
+                }
             }
 
             var selected = SelectedItem();
@@ -474,6 +519,10 @@ namespace BorderValley.UI.Inventory
             rect.offsetMax = Vector2.zero;
             var image = root.GetComponent<Image>();
             image.raycastTarget = true;
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyPanel(
+                image,
+                PresentationUiUtility.ResolvePanel(presentation));
             return root;
         }
 
@@ -524,6 +573,11 @@ namespace BorderValley.UI.Inventory
             var button = root.GetComponent<Button>();
             button.targetGraphic = image;
             button.onClick.AddListener(action);
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyButton(
+                button,
+                PresentationUiUtility.ResolveButton(presentation),
+                PresentationUiUtility.ResolvePressedButton(presentation));
             var label = CreateText(root.transform, "Label", key, 17, Vector2.zero, Vector2.one, TextAnchor.MiddleCenter);
             label.raycastTarget = false;
             return button;
@@ -531,6 +585,43 @@ namespace BorderValley.UI.Inventory
 
         private static Button CreateTextButton(Transform parent, string name, string key, Vector2 min, Vector2 max, UnityEngine.Events.UnityAction action) =>
             CreateButton(parent, name, key, min, max, action);
+
+        private IPresentationService Presentation =>
+            presentation ?? (presentation = PresentationUiUtility.GetOrNull());
+
+        private void SetItemIcon(Image icon, string definitionId, ItemSlot slot)
+        {
+            if (icon == null)
+                return;
+
+            icon.sprite = string.IsNullOrWhiteSpace(definitionId)
+                ? null
+                : Presentation?.GetItemIcon(
+                    definitionId,
+                    PresentationUiUtility.ResolveItemSlotId(slot));
+        }
+
+        private static Image CreateIcon(
+            Transform parent,
+            string name,
+            Vector2 anchor,
+            Vector2 anchoredPosition,
+            Vector2 size,
+            Vector2? pivot = null)
+        {
+            var root = new GameObject(name, typeof(RectTransform), typeof(Image));
+            root.transform.SetParent(parent, false);
+            var rect = root.GetComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = pivot ?? new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            var image = root.GetComponent<Image>();
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            return image;
+        }
 
         private static Font GetFont()
         {

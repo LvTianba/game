@@ -4,6 +4,7 @@ using System.Linq;
 using BorderValley.Core.Combat;
 using BorderValley.Core.Random;
 using BorderValley.Data.Items;
+using BorderValley.Presentation;
 using BorderValley.UI.Inventory;
 using NUnit.Framework;
 using UnityEngine;
@@ -200,8 +201,36 @@ namespace BorderValley.Inventory.Tests
             Assert.That(presenter.LastErrorKey, Is.Empty);
         }
 
-        private InventoryUiPresenter Presenter(Action<string> save = null) =>
-            new(service, crafting, progression, affixes, save);
+        [Test]
+        public void CraftingSuccessPaths_PlayCraftAudio()
+        {
+            var calls = new RecordingPresentationService();
+            var presenter = Presenter(presentation: calls);
+
+            presenter.Select("warrior.item");
+            Assert.That(presenter.DismantleSelected(), Is.True);
+            presenter.Select("mage.item");
+            Assert.That(
+                presenter.ReforgeSelected("affix.flat_power", RandomSourceFactory.FromSeed("audio.reforge")),
+                Is.True);
+            Assert.That(
+                presenter.Craft(
+                    "crafted.audio",
+                    "item.sword",
+                    "class.warrior",
+                    1,
+                    RandomSourceFactory.FromSeed("audio.craft")),
+                Is.True);
+
+            Assert.That(
+                calls.SfxCalls.Count(cueId => cueId == "sfx.inventory.craft"),
+                Is.EqualTo(3));
+        }
+
+        private InventoryUiPresenter Presenter(
+            Action<string> save = null,
+            IPresentationService presentation = null) =>
+            new(service, crafting, progression, affixes, save, presentation);
 
         private InventoryUiPresenter PresenterWithSave(Func<string, bool> save) =>
             new(service, crafting, progression, null, null, affixes, save);
@@ -290,6 +319,29 @@ namespace BorderValley.Inventory.Tests
         {
             created.Add(value);
             return value;
+        }
+
+        private sealed class RecordingPresentationService : IPresentationService
+        {
+            public bool IsAvailable => true;
+            public List<string> SfxCalls { get; } = new();
+
+            public VisualClip GetVisualClip(string clipId) => null;
+            public Sprite GetSprite(string spriteId) => null;
+            public AudioCue GetAudioCue(string cueId) => null;
+            public string GetAreaMusicCueId(string areaId) => string.Empty;
+            public string GetCharacterVisualPrefix(string definitionId) => string.Empty;
+            public Sprite GetNpcPortrait(string npcId) => null;
+            public Sprite GetItemIcon(string itemDefinitionId, string slotId) => null;
+            public Sprite GetUiSprite(string partId) => null;
+            public void PlayMusic(string cueId)
+            {
+            }
+
+            public void PlaySfx(string cueId) => SfxCalls.Add(cueId);
+            public void StopMusic()
+            {
+            }
         }
     }
 }

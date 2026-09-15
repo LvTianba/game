@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BorderValley.Core.Random;
 using BorderValley.Data.Items;
+using BorderValley.Presentation;
 using InventorySystem = BorderValley.Inventory;
 
 namespace BorderValley.UI.Inventory
@@ -13,6 +14,7 @@ namespace BorderValley.UI.Inventory
         private readonly InventorySystem.PartyProgressionService progression;
         private readonly IReadOnlyDictionary<string, AffixDefinition> affixDefinitions;
         private readonly Func<string, bool> save;
+        private readonly IPresentationService presentation;
         private InventorySystem.InventoryFilter filter = new();
         private InventorySystem.InventorySort sort = InventorySystem.InventorySort.SlotThenRarity;
         private bool hasUnsavedChanges;
@@ -22,7 +24,8 @@ namespace BorderValley.UI.Inventory
             InventorySystem.CraftingService crafting,
             InventorySystem.PartyProgressionService progression,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions = null,
-            Action<string> save = null)
+            Action<string> save = null,
+            IPresentationService presentation = null)
             : this(
                 inventory,
                 crafting,
@@ -30,7 +33,8 @@ namespace BorderValley.UI.Inventory
                 null,
                 null,
                 affixDefinitions,
-                save == null ? null : _ => { save(_); return true; })
+                save == null ? null : _ => { save(_); return true; },
+                presentation)
         {
         }
 
@@ -39,8 +43,9 @@ namespace BorderValley.UI.Inventory
             InventorySystem.PartyProgressionService progression,
             InventorySystem.CraftingService crafting,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions = null,
-            Action<string> save = null)
-            : this(inventory, crafting, progression, affixDefinitions, save)
+            Action<string> save = null,
+            IPresentationService presentation = null)
+            : this(inventory, crafting, progression, affixDefinitions, save, presentation)
         {
         }
 
@@ -51,7 +56,8 @@ namespace BorderValley.UI.Inventory
             InventorySystem.EconomyService economy,
             InventorySystem.CraftingCosts costs,
             IReadOnlyDictionary<string, AffixDefinition> affixDefinitions = null,
-            Func<string, bool> save = null)
+            Func<string, bool> save = null,
+            IPresentationService presentation = null)
         {
             this.inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             this.crafting = crafting;
@@ -61,6 +67,7 @@ namespace BorderValley.UI.Inventory
             this.affixDefinitions = affixDefinitions ??
                 new Dictionary<string, AffixDefinition>(StringComparer.Ordinal);
             this.save = save;
+            this.presentation = presentation ?? new NullPresentationService();
             this.inventory.Changed += Notify;
             if (this.progression != null)
                 this.progression.Changed += Notify;
@@ -131,6 +138,7 @@ namespace BorderValley.UI.Inventory
             return SetResult(
                 inventory.TryEquip(SelectedInstanceId, memberId, classId, out var error),
                 error,
+                "sfx.inventory.equip",
                 persistChanges: true);
         }
 
@@ -140,6 +148,7 @@ namespace BorderValley.UI.Inventory
             SetResult(
                 inventory.TryUnequip(memberId, slot, out var error),
                 error,
+                "sfx.ui.cancel",
                 persistChanges: true);
 
         public bool DismantleSelected()
@@ -153,7 +162,7 @@ namespace BorderValley.UI.Inventory
 
             SelectedInstanceId = null;
             LockedAffixId = null;
-            return Succeed(persistChanges: true);
+            return Succeed(persistChanges: true, sfxId: "sfx.inventory.craft");
         }
 
         public bool ReforgeSelected(string lockedAffixId, IRandomSource random)
@@ -171,7 +180,7 @@ namespace BorderValley.UI.Inventory
 
             var result = crafting.Reforge(SelectedInstanceId, LockedAffixId, random);
             return result.Success
-                ? Succeed(persistChanges: true)
+                ? Succeed(persistChanges: true, sfxId: "sfx.inventory.craft")
                 : Fail(result.Error);
         }
 
@@ -194,7 +203,7 @@ namespace BorderValley.UI.Inventory
 
             var result = crafting.Craft(instanceId, definition, classId, itemLevel, random);
             return result.Success
-                ? Succeed(persistChanges: true)
+                ? Succeed(persistChanges: true, sfxId: "sfx.inventory.craft")
                 : Fail(result.Error);
         }
 
@@ -207,7 +216,7 @@ namespace BorderValley.UI.Inventory
             }
 
             progression.RecoverOutOfCombat(amount);
-            Succeed();
+            Succeed(sfxId: "sfx.world.reward");
         }
 
         public bool RetrySave()
@@ -216,6 +225,7 @@ namespace BorderValley.UI.Inventory
             if (save == null)
             {
                 LastErrorKey = BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed;
+                presentation.PlaySfx("sfx.ui.error");
                 Notify();
                 return false;
             }
@@ -223,6 +233,7 @@ namespace BorderValley.UI.Inventory
             if (!TryInvokeSave())
             {
                 LastErrorKey = BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed;
+                presentation.PlaySfx("sfx.ui.error");
                 Notify();
                 return false;
             }
@@ -240,14 +251,18 @@ namespace BorderValley.UI.Inventory
                 progression.Changed -= Notify;
         }
 
-        private bool SetResult(bool success, string error, bool persistChanges = false)
+        private bool SetResult(
+            bool success,
+            string error,
+            string sfxId,
+            bool persistChanges = false)
         {
             if (success)
-                return Succeed(persistChanges);
+                return Succeed(persistChanges, sfxId);
             return Fail(error);
         }
 
-        private bool Succeed(bool persistChanges = false)
+        private bool Succeed(bool persistChanges = false, string sfxId = null)
         {
             LastErrorKey = string.Empty;
             if (persistChanges && save != null)
@@ -256,6 +271,7 @@ namespace BorderValley.UI.Inventory
                 {
                     hasUnsavedChanges = true;
                     LastErrorKey = BorderValley.UI.Inventory.InventoryTextKeys.AutoSaveFailed;
+                    presentation.PlaySfx("sfx.ui.error");
                     Notify();
                     return false;
                 }
@@ -263,6 +279,8 @@ namespace BorderValley.UI.Inventory
                 hasUnsavedChanges = false;
             }
 
+            if (!string.IsNullOrWhiteSpace(sfxId))
+                presentation.PlaySfx(sfxId);
             Notify();
             return true;
         }
@@ -284,6 +302,7 @@ namespace BorderValley.UI.Inventory
             LastErrorKey = string.IsNullOrWhiteSpace(error)
                 ? BorderValley.UI.Inventory.InventoryTextKeys.ServiceUnavailable
                 : error;
+            presentation.PlaySfx("sfx.ui.error");
             Notify();
             return false;
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using BorderValley.Narrative;
+using BorderValley.Presentation;
 
 namespace BorderValley.UI.World
 {
@@ -8,15 +9,20 @@ namespace BorderValley.UI.World
     {
         private readonly DialogueService service;
         private readonly IDialoguePanelView view;
+        private readonly IPresentationService presentation;
         private DialogueSession session;
         private DialogueSession openedShopSourceSession;
         private string openedShopSourceId = string.Empty;
         private string pendingOpenedShopId = string.Empty;
 
-        public DialogueUiPresenter(DialogueService service, IDialoguePanelView view)
+        public DialogueUiPresenter(
+            DialogueService service,
+            IDialoguePanelView view,
+            IPresentationService presentation = null)
         {
             this.service = service ?? throw new ArgumentNullException(nameof(service));
             this.view = view ?? throw new ArgumentNullException(nameof(view));
+            this.presentation = presentation ?? new NullPresentationService();
             this.view.ChoiceSelected += index => SelectChoice(index);
             this.view.ContinueRequested += () => Continue();
             this.view.CloseRequested += Close;
@@ -41,6 +47,7 @@ namespace BorderValley.UI.World
             IsOpen = true;
             view.SetVisible(true);
             Render();
+            PlayPage();
             return true;
         }
 
@@ -54,6 +61,7 @@ namespace BorderValley.UI.World
             LastErrorKey = string.Empty;
             SynchronizeOpenedShop();
             Render();
+            PlayPage();
             return true;
         }
 
@@ -67,16 +75,21 @@ namespace BorderValley.UI.World
             LastErrorKey = string.Empty;
             SynchronizeOpenedShop();
             Render();
+            PlayPage();
             return true;
         }
 
-        public void Close()
+        public void Close() => Close(true);
+
+        public void Close(bool playSound)
         {
             session = null;
             LastErrorKey = string.Empty;
             IsOpen = false;
             ClearPendingOpenedShop();
             view.SetVisible(false);
+            if (playSound)
+                presentation.PlaySfx("sfx.ui.cancel");
             view.Render(new DialoguePanelViewData(
                 string.Empty,
                 string.Empty,
@@ -113,13 +126,16 @@ namespace BorderValley.UI.World
             var showContinue = choices.Length == 0 &&
                                !session.IsComplete &&
                                !string.IsNullOrWhiteSpace(session.CurrentNode.NextNodeId);
+            var speakerNpcId = session.CurrentNode.SpeakerNpcId;
             view.Render(new DialoguePanelViewData(
-                WorldTextKeys.NpcSpeakerKey(session.CurrentNode.SpeakerNpcId),
+                WorldTextKeys.NpcSpeakerKey(speakerNpcId),
                 session.ShouldSkipCurrentNodeText ? string.Empty : session.CurrentNode.TextKey,
                 choices,
                 showContinue,
                 true,
-                LastErrorKey));
+                LastErrorKey,
+                speakerNpcId,
+                PresentationUiUtility.GetOrNull()?.GetNpcPortrait(speakerNpcId)));
         }
 
         private bool Fail(string error, bool keepOpen)
@@ -130,6 +146,7 @@ namespace BorderValley.UI.World
             IsOpen = keepOpen;
             view.SetVisible(keepOpen);
             Render();
+            presentation.PlaySfx("sfx.ui.error");
             return false;
         }
 
@@ -152,5 +169,7 @@ namespace BorderValley.UI.World
             openedShopSourceSession = null;
             openedShopSourceId = string.Empty;
         }
+
+        private void PlayPage() => presentation.PlaySfx("sfx.dialogue.page");
     }
 }

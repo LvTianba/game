@@ -38,7 +38,9 @@ namespace BorderValley.UI.World
             IEnumerable<DialogueChoiceBinding> choices,
             bool showContinue,
             bool showClose,
-            string errorKey)
+            string errorKey,
+            string speakerNpcId = "",
+            Sprite portraitSprite = null)
         {
             SpeakerKey = speakerKey ?? string.Empty;
             TextKey = textKey ?? string.Empty;
@@ -46,6 +48,8 @@ namespace BorderValley.UI.World
             ShowContinue = showContinue;
             ShowClose = showClose;
             ErrorKey = errorKey ?? string.Empty;
+            SpeakerNpcId = speakerNpcId ?? string.Empty;
+            PortraitSprite = portraitSprite;
         }
 
         public string SpeakerKey { get; }
@@ -54,12 +58,15 @@ namespace BorderValley.UI.World
         public bool ShowContinue { get; }
         public bool ShowClose { get; }
         public string ErrorKey { get; }
+        public string SpeakerNpcId { get; }
+        public Sprite PortraitSprite { get; }
     }
 
     public sealed class DialoguePanelView : MonoBehaviour, IDialoguePanelView
     {
         private readonly List<GameObject> choiceObjects = new();
         private GameObject panelRoot;
+        private Image portraitImage;
         private Text speakerLabel;
         private Text textLabel;
         private Text errorLabel;
@@ -106,6 +113,11 @@ namespace BorderValley.UI.World
             speakerLabel.text = string.IsNullOrWhiteSpace(data.SpeakerKey)
                 ? WorldTextKeys.DialogueSpeakerUnknown
                 : data.SpeakerKey;
+            var portrait = data.PortraitSprite ??
+                           PresentationUiUtility.GetOrNull()?.GetUiSprite("ui.missing");
+            portraitImage.sprite = portrait;
+            portraitImage.gameObject.SetActive(
+                !string.IsNullOrWhiteSpace(data.SpeakerNpcId) && portrait != null);
             textLabel.text = data.TextKey;
             errorLabel.text = data.ErrorKey;
             continueButton.gameObject.SetActive(data.ShowContinue);
@@ -153,12 +165,13 @@ namespace BorderValley.UI.World
             if (panelRoot != null) return;
 
             panelRoot = WorldPanelViewFactory.CreatePanel(transform, "DialoguePanel");
+            portraitImage = CreatePortrait(panelRoot.transform);
             speakerLabel = WorldPanelViewFactory.CreateText(
                 panelRoot.transform,
                 "Speaker",
                 WorldTextKeys.DialogueSpeakerUnknown,
                 22,
-                new Vector2(0.08f, 0.82f),
+                new Vector2(0.20f, 0.82f),
                 new Vector2(0.92f, 0.94f),
                 TextAnchor.MiddleLeft);
             textLabel = WorldPanelViewFactory.CreateText(
@@ -166,7 +179,7 @@ namespace BorderValley.UI.World
                 "Text",
                 string.Empty,
                 20,
-                new Vector2(0.08f, 0.38f),
+                new Vector2(0.20f, 0.38f),
                 new Vector2(0.92f, 0.8f),
                 TextAnchor.UpperLeft);
             errorLabel = WorldPanelViewFactory.CreateText(
@@ -203,6 +216,23 @@ namespace BorderValley.UI.World
                 () => CloseRequested?.Invoke());
             panelRoot.SetActive(false);
         }
+
+        private static Image CreatePortrait(Transform parent)
+        {
+            var root = new GameObject("Portrait", typeof(RectTransform), typeof(Image));
+            root.transform.SetParent(parent, false);
+            var rect = root.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.04f, 0.58f);
+            rect.anchorMax = rect.anchorMin;
+            rect.pivot = Vector2.zero;
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(256f, 256f);
+            var image = root.GetComponent<Image>();
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            root.SetActive(false);
+            return image;
+        }
     }
 
     internal static class WorldPanelViewFactory
@@ -219,6 +249,10 @@ namespace BorderValley.UI.World
             var image = root.GetComponent<Image>();
             image.color = new Color(0.05f, 0.08f, 0.14f, 0.97f);
             image.raycastTarget = true;
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyPanel(
+                image,
+                PresentationUiUtility.ResolvePanel(presentation));
             return root;
         }
 
@@ -271,6 +305,11 @@ namespace BorderValley.UI.World
             var button = root.GetComponent<Button>();
             button.targetGraphic = image;
             button.onClick.AddListener(action);
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyButton(
+                button,
+                PresentationUiUtility.ResolveButton(presentation),
+                PresentationUiUtility.ResolvePressedButton(presentation));
             CreateText(
                 root.transform,
                 "Label",

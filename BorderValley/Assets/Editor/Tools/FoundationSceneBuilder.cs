@@ -2,6 +2,8 @@ using BorderValley.Core;
 using BorderValley.Data;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
+using BorderValley.Editor.Tools;
+using BorderValley.Presentation;
 using BorderValley.UI;
 using BorderValley.UI.World;
 using UnityEditor;
@@ -33,14 +35,17 @@ namespace BorderValley.Editor
             var bootstrapper = services.AddComponent<GameBootstrapper>();
             var inventoryInstaller = services.AddComponent<InventoryBootstrapInstaller>();
             var narrativeInstaller = services.AddComponent<NarrativeBootstrapInstaller>();
+
+            var presentationInstaller = services.AddComponent<PresentationBootstrapInstaller>();
             var bootSerialized = new SerializedObject(bootstrapper);
             var preflightProperty = bootSerialized.FindProperty("preflightChecks");
             preflightProperty.arraySize = 1;
             preflightProperty.GetArrayElementAtIndex(0).objectReferenceValue = validator;
             var serviceInstallersProperty = bootSerialized.FindProperty("serviceInstallers");
-            serviceInstallersProperty.arraySize = 2;
+            serviceInstallersProperty.arraySize = 3;
             serviceInstallersProperty.GetArrayElementAtIndex(0).objectReferenceValue = inventoryInstaller;
             serviceInstallersProperty.GetArrayElementAtIndex(1).objectReferenceValue = narrativeInstaller;
+            serviceInstallersProperty.GetArrayElementAtIndex(2).objectReferenceValue = presentationInstaller;
             bootSerialized.ApplyModifiedPropertiesWithoutUndo();
             EditorSceneManager.SaveScene(boot, "Assets/Scenes/Boot.unity");
 

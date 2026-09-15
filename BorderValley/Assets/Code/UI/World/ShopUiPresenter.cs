@@ -3,6 +3,7 @@ using System.Linq;
 using BorderValley.Data.Items;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
+using BorderValley.Presentation;
 
 namespace BorderValley.UI.World
 {
@@ -13,6 +14,7 @@ namespace BorderValley.UI.World
         private readonly EconomyService economy;
         private readonly NarrativeStateService state;
         private readonly IShopPanelView view;
+        private readonly IPresentationService presentation;
         private string currentShopId = string.Empty;
 
         public ShopUiPresenter(
@@ -20,13 +22,15 @@ namespace BorderValley.UI.World
             InventoryService inventory,
             EconomyService economy,
             NarrativeStateService state,
-            IShopPanelView view)
+            IShopPanelView view,
+            IPresentationService presentation = null)
         {
             this.shop = shop ?? throw new ArgumentNullException(nameof(shop));
             this.inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
             this.economy = economy ?? throw new ArgumentNullException(nameof(economy));
             this.state = state ?? throw new ArgumentNullException(nameof(state));
             this.view = view ?? throw new ArgumentNullException(nameof(view));
+            this.presentation = presentation ?? new NullPresentationService();
             this.view.BuyRequested += offerId => Buy(offerId);
             this.view.SellRequested += instanceId => Sell(instanceId);
             this.view.CloseRequested += Close;
@@ -51,6 +55,7 @@ namespace BorderValley.UI.World
             IsOpen = true;
             view.SetVisible(true);
             Refresh();
+            presentation.PlaySfx("sfx.ui.click");
             return true;
         }
 
@@ -63,6 +68,7 @@ namespace BorderValley.UI.World
 
             LastErrorKey = string.Empty;
             Refresh();
+            presentation.PlaySfx("sfx.shop.buy");
             BuySucceeded?.Invoke(offerId);
             return true;
         }
@@ -76,6 +82,7 @@ namespace BorderValley.UI.World
 
             LastErrorKey = string.Empty;
             Refresh();
+            presentation.PlaySfx("sfx.shop.sell");
             SellSucceeded?.Invoke(instanceId);
             return true;
         }
@@ -86,6 +93,7 @@ namespace BorderValley.UI.World
             LastErrorKey = string.Empty;
             IsOpen = false;
             view.SetVisible(false);
+            presentation.PlaySfx("sfx.ui.cancel");
             view.Render(EmptyData());
         }
 
@@ -101,13 +109,17 @@ namespace BorderValley.UI.World
                 .Select(offer => new ShopOfferBinding(
                     offer.OfferId,
                     GetItemKey(offer.Item.ItemDefinitionId),
-                    offer.BuyPrice))
+                    offer.BuyPrice,
+                    offer.Item.ItemDefinitionId,
+                    GetItemSlot(offer.Item.ItemDefinitionId)))
                 .ToArray();
             var sellItems = inventory.Items
                 .Select(item => new ShopSellBinding(
                     item.InstanceId,
                     GetItemKey(item.ItemDefinitionId),
-                    economy.GetSellPrice(item)))
+                    economy.GetSellPrice(item),
+                    item.ItemDefinitionId,
+                    GetItemSlot(item.ItemDefinitionId)))
                 .ToArray();
             view.Render(new ShopPanelViewData(
                 WorldTextKeys.ShopTitle,
@@ -133,6 +145,7 @@ namespace BorderValley.UI.World
             IsOpen = keepOpen;
             view.SetVisible(keepOpen);
             Refresh();
+            presentation.PlaySfx("sfx.ui.error");
             return false;
         }
 
@@ -150,5 +163,10 @@ namespace BorderValley.UI.World
             }
             return string.IsNullOrWhiteSpace(definitionId) ? WorldTextKeys.UnknownItem : definitionId;
         }
+
+        private ItemSlot GetItemSlot(string definitionId) =>
+            inventory.Definitions.TryGetValue(definitionId, out var definition)
+                ? definition.Slot
+                : default;
     }
 }

@@ -14,6 +14,7 @@ using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
 using BorderValley.Inventory;
 using BorderValley.Narrative;
+using BorderValley.Presentation;
 using BorderValley.UI.Battle;
 using BorderValley.UI.World;
 using BorderValley.World;
@@ -52,6 +53,17 @@ namespace BorderValley.PlayModeTests
             Assert.That(controller.Player, Is.Not.Null);
             Assert.That(controller.MapView, Is.Not.Null);
             Assert.That(controller.Joystick.Value, Is.EqualTo(Vector2.zero));
+            Assert.That(controller.Player.GetComponent<SpriteRenderer>().sprite, Is.Not.Null);
+            Assert.That(controller.MapView.RenderedSpriteCount, Is.GreaterThan(0));
+            var missingSprite = GameBootstrapper.Context.Get<IPresentationService>().GetSprite("ui.missing");
+            var unresolvedSprites = controller.MapView.GetComponentsInChildren<SpriteRenderer>(true)
+                .Where(renderer => renderer.sprite == null || renderer.sprite == missingSprite)
+                .Select(renderer => renderer.gameObject.name)
+                .ToArray();
+            Assert.That(
+                unresolvedSprites,
+                Is.Empty,
+                "Unresolved world map sprites: " + string.Join(", ", unresolvedSprites));
 
             PressJoystick(controller, Vector2.right);
             Assert.That(controller.Joystick.Value.x, Is.GreaterThan(0.95f));

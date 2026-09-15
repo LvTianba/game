@@ -30,6 +30,9 @@ namespace BorderValley.UI.Battle
         public static string Unit(string definitionId) =>
             definitionId switch
             {
+                "class.warrior" => "battle.unit.warrior",
+                "class.ranger" => "battle.unit.ranger",
+                "class.mage" => "battle.unit.mage",
                 "unit.warrior" => "battle.unit.warrior",
                 "unit.ranger" => "battle.unit.ranger",
                 "unit.mage" => "battle.unit.mage",

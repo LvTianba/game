@@ -38,6 +38,17 @@ namespace BorderValley.UI.World.Tests
         }
 
         [Test]
+        public void Open_Render_IncludesSpeakerNpcId()
+        {
+            var runtime = CreateDialogueRuntime(CreateConditionalDialogue(), ElderId);
+            var view = new StubDialoguePanelView();
+            var presenter = new DialogueUiPresenter(runtime.Service, view);
+
+            Assert.That(presenter.Open(ElderId), Is.True);
+            Assert.That(view.Data.SpeakerNpcId, Is.EqualTo(ElderId));
+        }
+
+        [Test]
         public void Open_DialogueConditionChangesTextAndVisibleChoices()
         {
             var runtime = CreateDialogueRuntime(CreateConditionalDialogue(), ElderId);
@@ -293,8 +304,10 @@ namespace BorderValley.UI.World.Tests
                     typeof(InventoryService),
                     typeof(EconomyService),
                     typeof(NarrativeStateService),
-                    typeof(IShopPanelView)
+                    typeof(IShopPanelView),
+                    typeof(BorderValley.Presentation.IPresentationService)
                 }));
+            Assert.That(constructors[0].GetParameters()[5].IsOptional, Is.True);
         }
 
         [Test]

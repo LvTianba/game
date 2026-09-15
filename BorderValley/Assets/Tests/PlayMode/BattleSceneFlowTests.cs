@@ -7,6 +7,7 @@ using BorderValley.Core.BattleFlow;
 using BorderValley.Core.SceneManagement;
 using BorderValley.Data;
 using BorderValley.Data.World;
+using BorderValley.Presentation;
 using BorderValley.UI.Battle;
 using BorderValley.UI.World;
 using NUnit.Framework;
@@ -175,6 +176,78 @@ namespace BorderValley.PlayModeTests
             Assert.That(controller.RenderedCellCount, Is.EqualTo(48));
             Assert.That(controller.RenderedUnitCount, Is.EqualTo(6));
             Assert.That(controller.EndTurnButton, Is.Not.Null);
+
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            Assert.That(grid, Is.Not.Null);
+            Assert.That(grid.RenderedUnitSpriteCount, Is.GreaterThan(0));
+            Assert.That(grid.UnitSpriteSize, Is.EqualTo(new Vector2Int(64, 64)));
+        }
+
+        [UnityTest]
+        public IEnumerator BattleScene_PresentationEvent_UsesRequestedAnimationClip()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            yield return SceneManager.LoadSceneAsync("Battle");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<BattleSceneController>();
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            var presentation = GameBootstrapper.Context.Get<IPresentationService>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(grid, Is.Not.Null);
+            Assert.That(presentation, Is.Not.Null);
+
+            grid.PlayEvent(
+                new BattlePresentationEvent(controller.ActiveUnitId, BattlePresentationEventKind.Hit),
+                presentation);
+
+            Assert.That(
+                grid.GetComponentsInChildren<SpriteAnimator>(true)
+                    .Any(animator => animator.CurrentClipId.EndsWith(
+                        ".hit",
+                        System.StringComparison.Ordinal)),
+                Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator BattleScene_EnemyMove_ControllerGridPath_UsesMoveClip()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            yield return SceneManager.LoadSceneAsync("Battle");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<BattleSceneController>();
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(grid, Is.Not.Null);
+
+            string enemyUnitId = null;
+            GridPosition? destination = null;
+            controller.EnemyCommandSelector = (engine, unitId) =>
+            {
+                enemyUnitId = unitId;
+                var target = BattleMovement
+                    .FindReachableDestinations(engine.State, engine.ActiveUnit)
+                    .Keys
+                    .First();
+                destination = target;
+                return new MoveCommand(unitId, target);
+            };
+
+            controller.EndTurnButton.onClick.Invoke();
+            for (var index = 0; index < 20 && controller.EnemyActionCount == 0; index++)
+                yield return null;
+
+            Assert.That(controller.EnemyActionCount, Is.EqualTo(1));
+            Assert.That(enemyUnitId, Is.Not.Empty);
+            Assert.That(destination.HasValue, Is.True);
+            var animator = grid.transform
+                .Find($"Cell_{destination.Value.X}_{destination.Value.Y}")
+                .GetComponentInChildren<SpriteAnimator>(true);
+            Assert.That(animator, Is.Not.Null);
+            Assert.That(animator.CurrentClipId, Does.EndWith(".move"));
         }
 
         [UnityTest]
@@ -284,6 +357,14 @@ namespace BorderValley.PlayModeTests
             Assert.That(BattleTextKeys.Unit("enemy.bandit"), Is.EqualTo("battle.unit.bandit"));
             Assert.That(BattleTextKeys.Flag(false), Is.EqualTo("battle.ui.no"));
             Assert.That(BattleTextKeys.StatusKey(StatusType.Stunned), Is.EqualTo("battle.status.stunned"));
+        }
+
+        [Test]
+        public void BattleTextKeys_ClassIdsMapToBattleUnitKeys()
+        {
+            Assert.That(BattleTextKeys.Unit("class.warrior"), Is.EqualTo("battle.unit.warrior"));
+            Assert.That(BattleTextKeys.Unit("class.ranger"), Is.EqualTo("battle.unit.ranger"));
+            Assert.That(BattleTextKeys.Unit("class.mage"), Is.EqualTo("battle.unit.mage"));
         }
 
         [UnityTest]
