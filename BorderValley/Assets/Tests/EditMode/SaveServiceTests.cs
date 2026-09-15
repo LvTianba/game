@@ -174,6 +174,81 @@ namespace BorderValley.Core.Tests
         }
 
         [Test]
+        public void Save_WhenInvalidPrimaryAndPreviousCommitFails_PreservesPreviousRecovery()
+        {
+            var participant = new FakeParticipant { Value = 11 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "Recovery");
+            var primary = service.GetPrimaryPathForTests(0);
+            var previous = primary + ".previous";
+            var temporary = primary + ".tmp";
+            File.Move(primary, previous);
+            File.WriteAllText(primary, "{broken");
+
+            var operations = new FaultInjectingSaveCommitOperations
+            {
+                MoveFault = (source, destination, _) =>
+                    string.Equals(source, temporary, StringComparison.Ordinal) &&
+                    string.Equals(destination, primary, StringComparison.Ordinal)
+                        ? new IOException("forced invalid-primary commit failure")
+                        : null
+            };
+
+            participant.Value = 22;
+            var faultedService = new SaveService(root, new[] { participant }, operations);
+            Assert.Throws<IOException>(() => faultedService.Save(0, "Failed"));
+
+            participant.Reset();
+            Assert.That(faultedService.HasSave(0), Is.True);
+            Assert.That(faultedService.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(11));
+            Assert.That(participant.CurrentScene, Is.EqualTo("Recovery"));
+        }
+
+        [Test]
+        public void Save_WhenInvalidPrimaryWithoutPrevious_CommitsNewSave()
+        {
+            var participant = new FakeParticipant { Value = 5 };
+            var service = new SaveService(root, new[] { participant });
+            var primary = service.GetPrimaryPathForTests(0);
+            File.WriteAllText(primary, "{broken");
+
+            participant.Value = 6;
+            service.Save(0, "New");
+
+            participant.Reset();
+            Assert.That(service.HasSave(0), Is.True);
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(6));
+            Assert.That(participant.CurrentScene, Is.EqualTo("New"));
+        }
+
+        [Test]
+        public void Save_WhenInvalidPrimaryWithPrevious_CommitsAndCleansRecovery()
+        {
+            var participant = new FakeParticipant { Value = 5 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "Old");
+            var primary = service.GetPrimaryPathForTests(0);
+            var previous = primary + ".previous";
+            File.Move(primary, previous);
+            File.WriteAllText(primary, "{broken");
+
+            participant.Value = 6;
+            service.Save(0, "New");
+
+            Assert.That(File.Exists(previous), Is.False);
+            Assert.That(
+                Directory.GetFiles(root, Path.GetFileName(previous) + ".stale.*"),
+                Is.Empty);
+            participant.Reset();
+            Assert.That(service.HasSave(0), Is.True);
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(6));
+            Assert.That(participant.CurrentScene, Is.EqualTo("New"));
+        }
+
+        [Test]
         public void Save_FallbackCopyInterrupted_PreservesPrimaryAndBackupAndLoadsOldVersions()
         {
             var participant = new FakeParticipant { Value = 1 };
