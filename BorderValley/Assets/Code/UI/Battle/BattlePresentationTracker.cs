@@ -37,27 +37,23 @@ namespace BorderValley.UI.Battle
         public IReadOnlyList<BattlePresentationEvent> Observe(
             BattleState state,
             BattleCommand command,
-            BattleActionResult result) =>
-            Observe(state, command, result, null);
-
-        public IReadOnlyList<BattlePresentationEvent> Observe(
-            BattleState state,
-            BattleCommand command,
             BattleActionResult result,
-            string currentActiveUnitId)
+            string activeUnitId)
         {
             if (state == null)
                 throw new ArgumentNullException(nameof(state));
+            if (activeUnitId == null)
+                throw new ArgumentNullException(nameof(activeUnitId));
 
             var events = new List<BattlePresentationEvent>();
             if (!initialized)
             {
-                activeUnitId = ResolveActiveUnitId(command, result, currentActiveUnitId);
+                this.activeUnitId = activeUnitId;
                 CaptureSnapshot(state);
                 lastResult = result;
                 initialized = true;
                 events.Add(new BattlePresentationEvent(
-                    activeUnitId,
+                    this.activeUnitId,
                     BattlePresentationEventKind.TurnChanged));
                 return events.ToArray();
             }
@@ -100,34 +96,16 @@ namespace BorderValley.UI.Battle
             }
 
             lastResult = result;
-            var nextActiveUnitId = ResolveActiveUnitId(
-                command,
-                result,
-                currentActiveUnitId);
-            if (!string.Equals(activeUnitId, nextActiveUnitId, StringComparison.Ordinal))
+            if (!string.Equals(this.activeUnitId, activeUnitId, StringComparison.Ordinal))
             {
-                activeUnitId = nextActiveUnitId;
+                this.activeUnitId = activeUnitId;
                 events.Add(new BattlePresentationEvent(
-                    activeUnitId,
+                    this.activeUnitId,
                     BattlePresentationEventKind.TurnChanged));
             }
 
             CaptureSnapshot(state);
             return events.ToArray();
-        }
-
-        private string ResolveActiveUnitId(
-            BattleCommand command,
-            BattleActionResult result,
-            string currentActiveUnitId)
-        {
-            if (!string.IsNullOrWhiteSpace(currentActiveUnitId))
-                return currentActiveUnitId;
-
-            if (result?.Success == true && command is EndTurnCommand)
-                return string.Empty;
-
-            return command?.UnitId ?? activeUnitId;
         }
 
         private void CaptureSnapshot(BattleState state)

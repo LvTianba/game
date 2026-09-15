@@ -81,25 +81,28 @@ namespace BorderValley.UI.Battle
 
                 var prefix = ResolveVisualPrefix(presentation, unit.DefinitionId);
                 var idleClip = ResolveClip(presentation, prefix + ".idle");
-                var idleSprite = FirstFrame(idleClip);
+                var clip = unit.IsAlive
+                    ? idleClip
+                    : ResolveClip(presentation, prefix + ".down") ?? idleClip;
+                var sprite = FirstFrame(clip);
                 cell.UnitLabel.text = unit.DefinitionId;
                 cell.UnitLabel.color = unit.Team == Team.Player
                     ? new Color(0.48f, 0.78f, 1f, 1f)
                     : new Color(1f, 0.48f, 0.42f, 1f);
-                cell.UnitImage.sprite = idleSprite;
+                cell.UnitImage.sprite = sprite;
                 cell.VisualPrefix = prefix;
-                if (idleClip != null && idleSprite != null)
-                    cell.UnitAnimator.Play(idleClip);
+                if (clip != null && sprite != null)
+                    cell.UnitAnimator.Play(clip);
 
                 unitCells[unit.Id] = cell;
-                if (idleSprite != null)
+                if (sprite != null)
                 {
                     RenderedUnitSpriteCount++;
                     if (UnitSpriteSize == Vector2Int.zero)
                     {
                         UnitSpriteSize = new Vector2Int(
-                            Mathf.RoundToInt(idleSprite.rect.width),
-                            Mathf.RoundToInt(idleSprite.rect.height));
+                            Mathf.RoundToInt(sprite.rect.width),
+                            Mathf.RoundToInt(sprite.rect.height));
                     }
                 }
 

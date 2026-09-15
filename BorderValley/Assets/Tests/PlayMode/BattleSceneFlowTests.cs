@@ -211,6 +211,46 @@ namespace BorderValley.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator BattleScene_EnemyMove_ControllerGridPath_UsesMoveClip()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            yield return SceneManager.LoadSceneAsync("Battle");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<BattleSceneController>();
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(grid, Is.Not.Null);
+
+            string enemyUnitId = null;
+            GridPosition? destination = null;
+            controller.EnemyCommandSelector = (engine, unitId) =>
+            {
+                enemyUnitId = unitId;
+                var target = BattleMovement
+                    .FindReachableDestinations(engine.State, engine.ActiveUnit)
+                    .Keys
+                    .First();
+                destination = target;
+                return new MoveCommand(unitId, target);
+            };
+
+            controller.EndTurnButton.onClick.Invoke();
+            for (var index = 0; index < 20 && controller.EnemyActionCount == 0; index++)
+                yield return null;
+
+            Assert.That(controller.EnemyActionCount, Is.EqualTo(1));
+            Assert.That(enemyUnitId, Is.Not.Empty);
+            Assert.That(destination.HasValue, Is.True);
+            var animator = grid.transform
+                .Find($"Cell_{destination.Value.X}_{destination.Value.Y}")
+                .GetComponentInChildren<SpriteAnimator>(true);
+            Assert.That(animator, Is.Not.Null);
+            Assert.That(animator.CurrentClipId, Does.EndWith(".move"));
+        }
+
+        [UnityTest]
         public IEnumerator BattleScene_HudDoesNotOverlapGridButtons()
         {
             yield return SceneManager.LoadSceneAsync("Battle");

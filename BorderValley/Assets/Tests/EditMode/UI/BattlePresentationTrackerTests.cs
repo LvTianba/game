@@ -17,7 +17,8 @@ namespace BorderValley.UI.Tests
             var events = tracker.Observe(
                 presenter.Engine.State,
                 presenter.LastCommand,
-                presenter.LastResult);
+                presenter.LastResult,
+                ActiveUnitId(presenter));
 
             Assert.That(events.Count, Is.EqualTo(1));
             Assert.That(events[0].Kind, Is.EqualTo(BattlePresentationEventKind.TurnChanged));
@@ -28,7 +29,11 @@ namespace BorderValley.UI.Tests
         {
             var presenter = CreateStartedPresenter();
             var tracker = new BattlePresentationTracker();
-            tracker.Observe(presenter.Engine.State, null, null);
+            tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
             var actorId = presenter.ActiveUnit.Id;
             var destination = BattleMovement
                 .FindReachableDestinations(presenter.Engine.State, presenter.ActiveUnit)
@@ -39,7 +44,8 @@ namespace BorderValley.UI.Tests
             var events = tracker.Observe(
                 presenter.Engine.State,
                 presenter.LastCommand,
-                presenter.LastResult);
+                presenter.LastResult,
+                ActiveUnitId(presenter));
 
             Assert.That(result.Success, Is.True);
             Assert.That(
@@ -50,15 +56,51 @@ namespace BorderValley.UI.Tests
         }
 
         [Test]
+        public void Observe_MoveCommandWithUnchangedActiveUnit_DoesNotEmitTurnChanged()
+        {
+            var presenter = CreateStartedPresenter();
+            var tracker = new BattlePresentationTracker();
+            tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
+            var destination = BattleMovement
+                .FindReachableDestinations(presenter.Engine.State, presenter.ActiveUnit)
+                .Keys
+                .First();
+
+            var result = presenter.TapCell(destination);
+            var events = tracker.Observe(
+                presenter.Engine.State,
+                presenter.LastCommand,
+                presenter.LastResult,
+                ActiveUnitId(presenter));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(
+                events.Any(value => value.Kind == BattlePresentationEventKind.TurnChanged),
+                Is.False);
+        }
+
+        [Test]
         public void Observe_HealthDecreased_ReturnsHit()
         {
             var presenter = CreateStartedPresenter();
             var tracker = new BattlePresentationTracker();
-            tracker.Observe(presenter.Engine.State, null, null);
+            tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
             var target = presenter.Engine.State.GetUnit("enemy.bandit");
             target.SetCurrentResources(target.Health - 1, target.Mana);
 
-            var events = tracker.Observe(presenter.Engine.State, null, null);
+            var events = tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
 
             Assert.That(
                 events.Any(value =>
@@ -72,11 +114,19 @@ namespace BorderValley.UI.Tests
         {
             var presenter = CreateStartedPresenter();
             var tracker = new BattlePresentationTracker();
-            tracker.Observe(presenter.Engine.State, null, null);
+            tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
             var target = presenter.Engine.State.GetUnit("enemy.bandit");
             target.SetCurrentResources(0, target.Mana);
 
-            var events = tracker.Observe(presenter.Engine.State, null, null);
+            var events = tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
 
             Assert.That(
                 events.Any(value =>
@@ -95,7 +145,11 @@ namespace BorderValley.UI.Tests
         {
             var presenter = CreateStartedPresenter();
             var tracker = new BattlePresentationTracker();
-            tracker.Observe(presenter.Engine.State, null, null);
+            tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
             var actorId = presenter.ActiveUnit.Id;
             presenter.TapCell(new GridPosition(4, 2));
             presenter.SelectSkill("skill.basic");
@@ -105,7 +159,8 @@ namespace BorderValley.UI.Tests
             var events = tracker.Observe(
                 presenter.Engine.State,
                 presenter.LastCommand,
-                presenter.LastResult);
+                presenter.LastResult,
+                ActiveUnitId(presenter));
 
             Assert.That(result.Success, Is.True);
             Assert.That(presenter.LastCommand, Is.TypeOf<UseSkillCommand>());
@@ -121,7 +176,11 @@ namespace BorderValley.UI.Tests
         {
             var presenter = CreateStartedPresenter();
             var tracker = new BattlePresentationTracker();
-            tracker.Observe(presenter.Engine.State, null, null);
+            tracker.Observe(
+                presenter.Engine.State,
+                null,
+                null,
+                ActiveUnitId(presenter));
             presenter.TapCell(new GridPosition(4, 2));
             presenter.SelectSkill("skill.basic");
             var attackResult = presenter.TapCell(
@@ -129,13 +188,15 @@ namespace BorderValley.UI.Tests
             var attackEvents = tracker.Observe(
                 presenter.Engine.State,
                 presenter.LastCommand,
-                presenter.LastResult);
+                presenter.LastResult,
+                ActiveUnitId(presenter));
 
             var result = presenter.EndTurn();
             var events = tracker.Observe(
                 presenter.Engine.State,
                 presenter.LastCommand,
-                presenter.LastResult);
+                presenter.LastResult,
+                ActiveUnitId(presenter));
 
             Assert.That(attackResult.Success, Is.True);
             Assert.That(
@@ -158,5 +219,8 @@ namespace BorderValley.UI.Tests
             presenter.Start();
             return presenter;
         }
+
+        private static string ActiveUnitId(BattleUiPresenter presenter) =>
+            presenter.ActiveUnit?.Id ?? string.Empty;
     }
 }
