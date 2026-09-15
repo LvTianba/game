@@ -101,13 +101,17 @@ namespace BorderValley.UI.World
                 .Select(offer => new ShopOfferBinding(
                     offer.OfferId,
                     GetItemKey(offer.Item.ItemDefinitionId),
-                    offer.BuyPrice))
+                    offer.BuyPrice,
+                    offer.Item.ItemDefinitionId,
+                    GetItemSlot(offer.Item.ItemDefinitionId)))
                 .ToArray();
             var sellItems = inventory.Items
                 .Select(item => new ShopSellBinding(
                     item.InstanceId,
                     GetItemKey(item.ItemDefinitionId),
-                    economy.GetSellPrice(item)))
+                    economy.GetSellPrice(item),
+                    item.ItemDefinitionId,
+                    GetItemSlot(item.ItemDefinitionId)))
                 .ToArray();
             view.Render(new ShopPanelViewData(
                 WorldTextKeys.ShopTitle,
@@ -150,5 +154,10 @@ namespace BorderValley.UI.World
             }
             return string.IsNullOrWhiteSpace(definitionId) ? WorldTextKeys.UnknownItem : definitionId;
         }
+
+        private ItemSlot GetItemSlot(string definitionId) =>
+            inventory.Definitions.TryGetValue(definitionId, out var definition)
+                ? definition.Slot
+                : default;
     }
 }

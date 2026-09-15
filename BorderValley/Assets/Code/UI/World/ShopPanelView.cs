@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BorderValley.Data.Items;
+using BorderValley.Presentation;
 using UnityEngine;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
@@ -18,30 +20,48 @@ namespace BorderValley.UI.World
 
     public sealed class ShopOfferBinding
     {
-        public ShopOfferBinding(string offerId, string itemKey, int buyPrice)
+        public ShopOfferBinding(
+            string offerId,
+            string itemKey,
+            int buyPrice,
+            string itemDefinitionId = "",
+            ItemSlot slot = default)
         {
             OfferId = offerId ?? string.Empty;
             ItemKey = itemKey ?? string.Empty;
             BuyPrice = buyPrice;
+            ItemDefinitionId = itemDefinitionId ?? string.Empty;
+            Slot = slot;
         }
 
         public string OfferId { get; }
         public string ItemKey { get; }
         public int BuyPrice { get; }
+        public string ItemDefinitionId { get; }
+        public ItemSlot Slot { get; }
     }
 
     public sealed class ShopSellBinding
     {
-        public ShopSellBinding(string instanceId, string itemKey, int sellPrice)
+        public ShopSellBinding(
+            string instanceId,
+            string itemKey,
+            int sellPrice,
+            string itemDefinitionId = "",
+            ItemSlot slot = default)
         {
             InstanceId = instanceId ?? string.Empty;
             ItemKey = itemKey ?? string.Empty;
             SellPrice = sellPrice;
+            ItemDefinitionId = itemDefinitionId ?? string.Empty;
+            Slot = slot;
         }
 
         public string InstanceId { get; }
         public string ItemKey { get; }
         public int SellPrice { get; }
+        public string ItemDefinitionId { get; }
+        public ItemSlot Slot { get; }
     }
 
     public sealed class ShopPanelViewData
@@ -86,6 +106,7 @@ namespace BorderValley.UI.World
         private Button sellTabButton;
         private Button closeButton;
         private readonly List<Button> listButtons = new();
+        private IPresentationService presentation;
         private ShopTab activeTab;
         private ShopPanelViewData data;
 
@@ -98,6 +119,11 @@ namespace BorderValley.UI.World
         public event Action<string> BuyRequested;
         public event Action<string> SellRequested;
         public event Action CloseRequested;
+
+        public void Initialize(IPresentationService value)
+        {
+            presentation = value ?? PresentationUiUtility.GetOrNull();
+        }
 
         private void Awake()
         {
@@ -185,6 +211,7 @@ namespace BorderValley.UI.World
                     rect.pivot = new Vector2(0.5f, 1f);
                     rect.offsetMin = new Vector2(0f, -((index + 1) * RowHeight));
                     rect.offsetMax = new Vector2(0f, -(index * RowHeight));
+                    AddIcon(button, offer.ItemDefinitionId, offer.Slot);
                 }
                 UpdateContentHeight(data.BuyOffers.Count);
                 return;
@@ -219,6 +246,7 @@ namespace BorderValley.UI.World
                 rect.pivot = new Vector2(0.5f, 1f);
                 rect.offsetMin = new Vector2(0f, -((index + 1) * RowHeight));
                 rect.offsetMax = new Vector2(0f, -(index * RowHeight));
+                AddIcon(button, item.ItemDefinitionId, item.Slot);
             }
             UpdateContentHeight(data.SellItems.Count);
         }
@@ -349,6 +377,33 @@ namespace BorderValley.UI.World
             foreach (var button in listButtons)
                 RemoveButtonListeners(button);
             listButtons.Clear();
+        }
+
+        private void AddIcon(Button button, string itemDefinitionId, ItemSlot slot)
+        {
+            var iconRoot = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            iconRoot.transform.SetParent(button.transform, false);
+            var iconRect = iconRoot.GetComponent<RectTransform>();
+            iconRect.anchorMin = new Vector2(0f, 0.5f);
+            iconRect.anchorMax = new Vector2(0f, 0.5f);
+            iconRect.pivot = new Vector2(0f, 0.5f);
+            iconRect.anchoredPosition = new Vector2(5f, 0f);
+            iconRect.sizeDelta = new Vector2(32f, 32f);
+            var icon = iconRoot.GetComponent<Image>();
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+            icon.sprite = string.IsNullOrWhiteSpace(itemDefinitionId)
+                ? null
+                : (presentation ?? PresentationUiUtility.GetOrNull())?.GetItemIcon(
+                    itemDefinitionId,
+                    PresentationUiUtility.ResolveItemSlotId(slot));
+
+            var label = button.transform.Find("Label") as RectTransform;
+            if (label != null)
+            {
+                label.offsetMin = new Vector2(40f, 4f);
+                label.offsetMax = new Vector2(-8f, -4f);
+            }
         }
     }
 }

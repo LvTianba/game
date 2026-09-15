@@ -11,6 +11,11 @@ namespace BorderValley.UI
 
         private void Start()
         {
+            var presentation = PresentationUiUtility.GetOrNull();
+            PresentationUiUtility.ApplyButton(
+                newGameButton,
+                PresentationUiUtility.ResolveButton(presentation),
+                PresentationUiUtility.ResolvePressedButton(presentation));
             var loader = GameBootstrapper.Context.Get<Core.SceneManagement.ISceneLoader>();
             presenter = new MainMenuPresenter(loader);
             newGameButton.onClick.AddListener(presenter.StartNewGame);

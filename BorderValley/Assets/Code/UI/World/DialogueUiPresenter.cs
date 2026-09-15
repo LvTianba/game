@@ -113,13 +113,16 @@ namespace BorderValley.UI.World
             var showContinue = choices.Length == 0 &&
                                !session.IsComplete &&
                                !string.IsNullOrWhiteSpace(session.CurrentNode.NextNodeId);
+            var speakerNpcId = session.CurrentNode.SpeakerNpcId;
             view.Render(new DialoguePanelViewData(
-                WorldTextKeys.NpcSpeakerKey(session.CurrentNode.SpeakerNpcId),
+                WorldTextKeys.NpcSpeakerKey(speakerNpcId),
                 session.ShouldSkipCurrentNodeText ? string.Empty : session.CurrentNode.TextKey,
                 choices,
                 showContinue,
                 true,
-                LastErrorKey));
+                LastErrorKey,
+                speakerNpcId,
+                PresentationUiUtility.GetOrNull()?.GetNpcPortrait(speakerNpcId)));
         }
 
         private bool Fail(string error, bool keepOpen)
