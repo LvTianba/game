@@ -50,6 +50,7 @@ namespace BorderValley.UI.World
         private bool battleStarted;
         private BattleResult pendingBattleResult;
         private WorldBattleSettlementResult pendingSettlement;
+        private bool processingPendingResult;
         private readonly HashSet<string> suppressedExitIds = new(StringComparer.Ordinal);
         private QuestLogPanelView questLogView;
         private string pendingBattleResultKey = string.Empty;
@@ -216,6 +217,7 @@ namespace BorderValley.UI.World
             if (!initialized)
                 return;
 
+            RetryPendingSettlementIfSafe();
             RefreshInteractionState();
             if (battleStarted || IsUiOpen)
                 return;
@@ -296,7 +298,14 @@ namespace BorderValley.UI.World
 
         public bool BeginEncounter(WorldEncounterDefinition encounter)
         {
-            if (!initialized || battleStarted || encounter == null)
+            if (!initialized || battleStarted)
+                return false;
+            if (HasPendingSettlement)
+            {
+                LastErrorKey = WorldTextKeys.PendingSettlement;
+                return false;
+            }
+            if (encounter == null)
                 return false;
             if (!encounter.Repeatable &&
                 !string.IsNullOrWhiteSpace(encounter.CompletionEventId) &&
@@ -321,14 +330,24 @@ namespace BorderValley.UI.World
 
         public bool ProcessPendingBattleResult()
         {
-            if (!initialized)
+            if (!initialized || processingPendingResult)
                 return false;
-            if (pendingSettlement != null)
-                return RetryPendingAutosave();
-            if (pendingBattleResult == null && !flow.TryTakeResult(out pendingBattleResult))
-                return false;
+            processingPendingResult = true;
+            try
+            {
+                // pendingSettlement is only assigned after rewards have been applied.
+                // Retrying it below therefore only retries the autosave.
+                if (pendingSettlement != null)
+                    return RetryPendingAutosave();
+                if (pendingBattleResult == null && !flow.TryTakeResult(out pendingBattleResult))
+                    return false;
 
-            return SettlePendingBattleResult();
+                return SettlePendingBattleResult();
+            }
+            finally
+            {
+                processingPendingResult = false;
+            }
         }
 
         public void HandleApplicationPause(bool pauseStatus)
@@ -358,6 +377,16 @@ namespace BorderValley.UI.World
             pendingSettlement = null;
             RefreshMap();
             return true;
+        }
+
+        private void RetryPendingSettlementIfSafe()
+        {
+            if (!HasPendingSettlement || inventory == null)
+                return;
+            if (pendingSettlement == null && inventory.Items.Count >= inventory.Capacity)
+                return;
+
+            ProcessPendingBattleResult();
         }
 
         private bool SettlePendingBattleResult()
@@ -420,7 +449,8 @@ namespace BorderValley.UI.World
                 currentArea,
                 narrative,
                 out nearestInteraction,
-                suppressedExitIds);
+                suppressedExitIds,
+                !HasPendingSettlement);
             InteractButton.interactable = found;
             return found;
         }

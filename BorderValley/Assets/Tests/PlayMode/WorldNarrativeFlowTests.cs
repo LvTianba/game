@@ -1,9 +1,13 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using BorderValley.Core;
 using BorderValley.Core.BattleFlow;
 using BorderValley.Core.Persistence;
+using BorderValley.Core.SceneManagement;
 using BorderValley.Data;
+using BorderValley.Data.Items;
 using BorderValley.Data.Narrative;
 using BorderValley.Data.World;
 using BorderValley.Inventory;
@@ -238,6 +242,101 @@ namespace BorderValley.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator FullBagPendingSettlement_BlocksBattleAndAutoRetriesAfterSlotFreed()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+
+            var recordingLoader = new RecordingSceneLoader();
+            GameBootstrapper.Context.Register<ISceneLoader>(recordingLoader);
+            yield return SceneManager.LoadSceneAsync("World");
+            yield return null;
+
+            var controller = GetController();
+            var context = GameBootstrapper.Context;
+            var inventory = context.Get<InventoryService>();
+            var progression = context.Get<PartyProgressionService>();
+            var quests = context.Get<QuestService>();
+            var state = context.Get<NarrativeStateService>();
+            yield return AcceptMainQuest(controller);
+
+            var objectiveId = quests.GetJournal()
+                .Single(value => value.QuestId == MainQuestId)
+                .Objectives.Single(value => value.TargetId == "enemy.bandit")
+                .ObjectiveId;
+            for (var index = 0; index < inventory.Capacity; index++)
+            {
+                Assert.That(
+                    inventory.TryAdd(
+                        new ItemInstance(
+                            "pending." + index,
+                            "item.wooden_buckler",
+                            1,
+                            ItemRarity.Common,
+                            new AffixInstance[0]),
+                        out var error),
+                    Is.True,
+                    error);
+            }
+
+            var villageExit = FindAreaExit(VillageId, ForestId);
+            yield return MoveNear(controller, villageExit.Position);
+            ClickInteract(controller);
+
+            var encounter = FindEncounterInteractable(ForestId, "encounter.forest.bandits");
+            yield return MoveNear(controller, encounter.Position);
+            ClickInteract(controller);
+            yield return WaitForScene("Battle");
+            yield return null;
+
+            var battle = Object.FindAnyObjectByType<BattleSceneController>();
+            KillAllEnemies(battle);
+            Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+
+            controller = GetController();
+            yield return MoveNear(controller, encounter.Position);
+            Assert.That(controller.HasPendingSettlement, Is.True);
+            Assert.That(controller.LastErrorKey, Is.EqualTo(InventoryTextKeys.BagFull));
+            Assert.That(inventory.Items.Count, Is.EqualTo(inventory.Capacity));
+
+            var goldBeforeSettlement = inventory.Gold;
+            var experienceBeforeSettlement = progression.TotalExperience;
+            var questProgressBeforeSettlement = state.GetObjectiveProgress(MainQuestId, objectiveId);
+            var loadsBeforeBlockedEncounter = recordingLoader.LoadedScenes.Count;
+
+            Assert.That(controller.InteractButton.interactable, Is.False);
+            Assert.That(controller.Interact(), Is.False);
+            var encounterDefinition = FindArea(ForestId).Encounters
+                .Single(value => value.EncounterId == "encounter.forest.bandits");
+            Assert.That(controller.BeginEncounter(encounterDefinition), Is.False);
+            Assert.That(controller.LastErrorKey, Is.EqualTo(WorldTextKeys.PendingSettlement));
+            Assert.That(recordingLoader.LoadedScenes.Count, Is.EqualTo(loadsBeforeBlockedEncounter));
+            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("World"));
+            Assert.That(controller.HasPendingSettlement, Is.True);
+
+            var itemToRelease = inventory.Items.First();
+            Assert.That(inventory.TryRemove(itemToRelease.InstanceId), Is.True);
+            yield return null;
+
+            Assert.That(controller.HasPendingSettlement, Is.False);
+            Assert.That(controller.SettlementCount, Is.EqualTo(1));
+            Assert.That(inventory.Gold, Is.GreaterThan(goldBeforeSettlement));
+            Assert.That(progression.TotalExperience, Is.GreaterThan(experienceBeforeSettlement));
+            Assert.That(
+                state.GetObjectiveProgress(MainQuestId, objectiveId),
+                Is.EqualTo(questProgressBeforeSettlement + 1));
+            Assert.That(recordingLoader.LoadedScenes.Count, Is.EqualTo(loadsBeforeBlockedEncounter));
+
+            Assert.That(controller.InteractButton.interactable, Is.True);
+            ClickInteract(controller);
+            yield return WaitForScene("Battle");
+            Assert.That(recordingLoader.LoadedScenes.Count, Is.EqualTo(loadsBeforeBlockedEncounter + 1));
+            Assert.That(recordingLoader.LoadedScenes.Last(), Is.EqualTo("Battle"));
+        }
+
+        [UnityTest]
         public IEnumerator QuestLog_RealOpenAndClose_RefreshesInteractButton()
         {
             yield return LoadWorld();
@@ -412,6 +511,19 @@ namespace BorderValley.PlayModeTests
             for (var index = 0; index < 180 && SceneManager.GetActiveScene().name != sceneName; index++)
                 yield return null;
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(sceneName));
+        }
+
+        private sealed class RecordingSceneLoader : ISceneLoader
+        {
+            private readonly UnitySceneLoader inner = new UnitySceneLoader();
+            public List<string> LoadedScenes { get; } = new List<string>();
+            public string ActiveSceneName => inner.ActiveSceneName;
+
+            public Task LoadAsync(string sceneName)
+            {
+                LoadedScenes.Add(sceneName);
+                return inner.LoadAsync(sceneName);
+            }
         }
     }
 }

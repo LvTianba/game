@@ -14,7 +14,8 @@ namespace BorderValley.World
             WorldAreaDefinition area,
             NarrativeStateService state,
             out WorldInteractionResult result,
-            ISet<string> suppressedInteractableIds = null)
+            ISet<string> suppressedInteractableIds = null,
+            bool allowEncounter = true)
         {
             result = null;
             if (area == null || state == null || !IsFinite(position)) return false;
@@ -26,7 +27,13 @@ namespace BorderValley.World
 
             foreach (var interactable in interactables)
             {
-                if (!IsEligible(interactable, area, state, suppressedInteractableIds)) continue;
+                if (!IsEligible(
+                        interactable,
+                        area,
+                        state,
+                        suppressedInteractableIds,
+                        allowEncounter))
+                    continue;
 
                 var offset = interactable.Position - position;
                 var distance = offset.sqrMagnitude;
@@ -55,7 +62,8 @@ namespace BorderValley.World
             WorldInteractableDefinition interactable,
             WorldAreaDefinition area,
             NarrativeStateService state,
-            ISet<string> suppressedInteractableIds)
+            ISet<string> suppressedInteractableIds,
+            bool allowEncounter)
         {
             if (interactable == null ||
                 string.IsNullOrWhiteSpace(interactable.Id) ||
@@ -63,6 +71,9 @@ namespace BorderValley.World
                 !IsFinite(interactable.Position) ||
                 !IsFinite(interactable.Radius) ||
                 interactable.Radius < 0f)
+                return false;
+
+            if (!allowEncounter && interactable.Kind == WorldInteractableKind.Encounter)
                 return false;
 
             if (!string.IsNullOrWhiteSpace(interactable.RequiredEventId) &&
