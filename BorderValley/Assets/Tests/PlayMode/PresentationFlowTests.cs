@@ -13,6 +13,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace BorderValley.PlayModeTests
 {
@@ -93,6 +94,42 @@ namespace BorderValley.PlayModeTests
             yield return null;
 
             Assert.That(recording.MusicCalls, Does.Contain("bgm.world.forest"));
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.ui.confirm"));
+        }
+
+        [UnityTest]
+        public IEnumerator WorldController_ConstructedPresenters_PlayDialogueAndShopAudio()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var recording = WrapPresentation();
+            Object.FindAnyObjectByType<Button>().onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(controller.OpenDialogue("npc.elder"), Is.True);
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.dialogue.page"));
+
+            var dialogue = Object.FindAnyObjectByType<DialoguePanelView>();
+            FindButton(dialogue, "Close").onClick.Invoke();
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.ui.cancel"));
+            var cancelCount = recording.SfxCalls.Count(cueId => cueId == "sfx.ui.cancel");
+
+            Assert.That(controller.OpenDialogue("npc.merchant"), Is.True);
+            Assert.That(controller.ShopPresenter.IsOpen, Is.True);
+            Assert.That(
+                recording.SfxCalls.Count(cueId => cueId == "sfx.ui.cancel"),
+                Is.EqualTo(cancelCount));
+
+            var shop = Object.FindAnyObjectByType<ShopPanelView>();
+            FindButton(shop, "Buy_0").onClick.Invoke();
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.shop.buy"));
+
+            FindButton(shop, "SellTab").onClick.Invoke();
+            FindButton(shop, "Sell_0").onClick.Invoke();
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.shop.sell"));
         }
 
         [UnityTest]
@@ -125,6 +162,73 @@ namespace BorderValley.PlayModeTests
             var stopCount = recording.StopMusicCount;
             Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
             Assert.That(recording.StopMusicCount, Is.GreaterThan(stopCount));
+        }
+
+        [UnityTest]
+        public IEnumerator BattleScene_NormalAttack_PlaysAttackAudio()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var recording = WrapPresentation();
+            yield return SceneManager.LoadSceneAsync("Battle");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<BattleSceneController>();
+            var grid = Object.FindAnyObjectByType<BattleGridView>();
+            var state = controller.EngineForTests.State;
+            var active = state.Units.Single(unit => unit.Id == controller.ActiveUnitId);
+            var enemy = state.Units.First(unit => unit.Team == Team.Enemy);
+            var approach = BattleMovement
+                .FindReachableDestinations(state, active)
+                .Keys
+                .Where(position =>
+                    Mathf.Abs(position.X - enemy.Position.X) +
+                    Mathf.Abs(position.Y - enemy.Position.Y) == 1)
+                .OrderBy(position => position.X)
+                .ThenBy(position => position.Y)
+                .ToArray();
+            Assert.That(approach, Is.Not.Empty);
+
+            grid.Tap(approach[0]);
+            yield return null;
+            grid.Tap(enemy.Position);
+            yield return null;
+
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.battle.attack"));
+        }
+
+        [UnityTest]
+        public IEnumerator WorldBeginEncounter_PlaysEncounterAudio()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var recording = WrapPresentation();
+            Object.FindAnyObjectByType<Button>().onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            Assert.That(
+                controller.BeginEncounter(FindEncounter("encounter.forest.bandits")),
+                Is.True);
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.world.encounter"));
+        }
+
+        [UnityTest]
+        public IEnumerator WorldReward_PlaysRewardAudio()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var recording = WrapPresentation();
+            Object.FindAnyObjectByType<Button>().onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            var reward = FindFirstInteractable("area.village", WorldInteractableKind.Chest);
+            yield return MoveNear(controller, reward.Position);
+            Assert.That(controller.Interact(), Is.True);
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.world.reward"));
         }
 
         private static IEnumerator WaitForScene(string sceneName)
@@ -180,6 +284,36 @@ namespace BorderValley.PlayModeTests
                 .Single(value =>
                     value.Kind == WorldInteractableKind.AreaExit &&
                     value.TargetId == targetAreaId);
+        }
+
+        private static WorldInteractableDefinition FindFirstInteractable(
+            string areaId,
+            WorldInteractableKind kind)
+        {
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            return catalog.All
+                .OfType<WorldAreaDefinition>()
+                .Single(area => area.Id == areaId)
+                .Interactables
+                .First(value => value.Kind == kind);
+        }
+
+        private static WorldEncounterDefinition FindEncounter(string encounterId)
+        {
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            return catalog.All
+                .OfType<WorldEncounterDefinition>()
+                .Single(value => value.EncounterId == encounterId);
+        }
+
+        private static Button FindButton(Component root, string name)
+        {
+            var button = root.GetComponentsInChildren<Button>(true)
+                .FirstOrDefault(value => value.name == name);
+            Assert.That(button, Is.Not.Null, "Missing button: " + name);
+            return button;
         }
 
         private sealed class RecordingPresentationService : IPresentationService

@@ -88,6 +88,25 @@ namespace BorderValley.UI.Tests
         }
 
         [Test]
+        public void DialogueFailurePaths_PlayErrorCue()
+        {
+            var calls = new RecordingPresentationService();
+            var view = new StubDialoguePanelView();
+            var presenter = new DialogueUiPresenter(
+                CreateDialogueService(DialogueNode("node.start")),
+                view,
+                calls);
+
+            Assert.That(presenter.Open("npc.missing"), Is.False);
+            Assert.That(presenter.Continue(), Is.False);
+            Assert.That(presenter.SelectChoice(0), Is.False);
+
+            Assert.That(
+                calls.SfxCalls.Count(cueId => cueId == "sfx.ui.error"),
+                Is.EqualTo(3));
+        }
+
+        [Test]
         public void ShopBuyAndSell_PlaysTransactionalSoundsAndFailurePlaysError()
         {
             var calls = new RecordingPresentationService();

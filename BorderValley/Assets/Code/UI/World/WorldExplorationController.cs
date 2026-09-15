@@ -256,8 +256,14 @@ namespace BorderValley.UI.World
                 affixDefinitions,
                 economy,
                 _ => TrySaveWorld());
-            DialoguePresenter = new DialogueUiPresenter(dialogueService, dialogueView);
-            ShopPresenter = new ShopUiPresenter(shopService, inventory, economy, narrative, shopView);
+            DialoguePresenter = new DialogueUiPresenter(dialogueService, dialogueView, presentation);
+            ShopPresenter = new ShopUiPresenter(
+                shopService,
+                inventory,
+                economy,
+                narrative,
+                shopView,
+                presentation);
             QuestLogPresenter = new QuestLogPresenter(quests, questLogView);
             dialogueView.ChoiceSelected += OnDialogueChoiceSelected;
             dialogueView.CloseRequested += OnDialogueClosed;
@@ -355,7 +361,7 @@ namespace BorderValley.UI.World
                 return false;
             }
 
-            DialoguePresenter.Close();
+            DialoguePresenter.Close(false);
             RefreshInteractionState();
             return true;
         }

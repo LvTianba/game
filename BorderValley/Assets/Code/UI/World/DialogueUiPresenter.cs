@@ -79,14 +79,17 @@ namespace BorderValley.UI.World
             return true;
         }
 
-        public void Close()
+        public void Close() => Close(true);
+
+        public void Close(bool playSound)
         {
             session = null;
             LastErrorKey = string.Empty;
             IsOpen = false;
             ClearPendingOpenedShop();
             view.SetVisible(false);
-            presentation.PlaySfx("sfx.ui.cancel");
+            if (playSound)
+                presentation.PlaySfx("sfx.ui.cancel");
             view.Render(new DialoguePanelViewData(
                 string.Empty,
                 string.Empty,
@@ -143,6 +146,7 @@ namespace BorderValley.UI.World
             IsOpen = keepOpen;
             view.SetVisible(keepOpen);
             Render();
+            presentation.PlaySfx("sfx.ui.error");
             return false;
         }
 
