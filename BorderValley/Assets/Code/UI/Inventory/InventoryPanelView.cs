@@ -89,7 +89,8 @@ namespace BorderValley.UI.Inventory
                     economy,
                     this.costs,
                     this.affixDefinitions,
-                    save);
+                    save,
+                    this.presentation);
             if (presenter != null)
             {
                 presenter.Changed += Refresh;
@@ -117,6 +118,7 @@ namespace BorderValley.UI.Inventory
             Mode = mode;
             if (panelRoot != null)
                 panelRoot.SetActive(true);
+            presentation?.PlaySfx("sfx.ui.click");
             Refresh();
         }
 
@@ -124,6 +126,7 @@ namespace BorderValley.UI.Inventory
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            presentation?.PlaySfx("sfx.ui.cancel");
         }
 
         private void Awake()

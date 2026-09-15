@@ -1,4 +1,13 @@
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using BorderValley.Battle.Domain;
+using BorderValley.Core;
+using BorderValley.Data;
+using BorderValley.Data.World;
+using BorderValley.Presentation;
+using BorderValley.UI.Battle;
 using BorderValley.UI.World;
 using NUnit.Framework;
 using UnityEngine;
@@ -49,11 +58,170 @@ namespace BorderValley.PlayModeTests
                 Is.EqualTo("world.player.east.idle"));
         }
 
+        [UnityTest]
+        public IEnumerator MenuAndWorldStart_ChangesMusicCue()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+
+            var recording = WrapPresentation();
+            yield return SceneManager.LoadSceneAsync("MainMenu");
+            yield return null;
+            Assert.That(recording.MusicCalls, Does.Contain("bgm.menu"));
+
+            Object.FindAnyObjectByType<UnityEngine.UI.Button>().onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+
+            Assert.That(recording.MusicCalls, Does.Contain("bgm.world.village"));
+        }
+
+        [UnityTest]
+        public IEnumerator AreaTransition_ChangesMusicCue()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var recording = WrapPresentation();
+            Object.FindAnyObjectByType<UnityEngine.UI.Button>().onClick.Invoke();
+            yield return WaitForScene("World");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<WorldExplorationController>();
+            var exit = FindAreaExit("area.village", "area.forest");
+
+            yield return MoveNear(controller, exit.Position);
+            Assert.That(controller.Interact(), Is.True);
+            yield return null;
+
+            Assert.That(recording.MusicCalls, Does.Contain("bgm.world.forest"));
+        }
+
+        [UnityTest]
+        public IEnumerator BattleScene_PlaysBattleHitDownAndVictoryAudio()
+        {
+            yield return SceneManager.LoadSceneAsync("Boot");
+            yield return null;
+            var recording = WrapPresentation();
+            yield return SceneManager.LoadSceneAsync("Battle");
+            yield return null;
+
+            var controller = Object.FindAnyObjectByType<BattleSceneController>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(recording.MusicCalls, Does.Contain("bgm.battle"));
+
+            foreach (var enemy in controller.EngineForTests.State.Units
+                         .Where(unit => unit.Team == Team.Enemy)
+                         .ToArray())
+            {
+                enemy.ApplyRawDamage(int.MaxValue);
+            }
+
+            ForcePresenterRefresh(controller);
+            yield return null;
+
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.battle.hit"));
+            Assert.That(recording.SfxCalls, Does.Contain("sfx.battle.down"));
+            Assert.That(recording.MusicCalls, Does.Contain("bgm.victory"));
+
+            var stopCount = recording.StopMusicCount;
+            Object.FindAnyObjectByType<BattleHudView>().ContinueButton.onClick.Invoke();
+            Assert.That(recording.StopMusicCount, Is.GreaterThan(stopCount));
+        }
+
         private static IEnumerator WaitForScene(string sceneName)
         {
             for (var index = 0; index < 180 && SceneManager.GetActiveScene().name != sceneName; index++)
                 yield return null;
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(sceneName));
+        }
+
+        private static RecordingPresentationService WrapPresentation()
+        {
+            var recording = new RecordingPresentationService(
+                GameBootstrapper.Context.Get<IPresentationService>());
+            GameBootstrapper.Context.Register<IPresentationService>(recording);
+            return recording;
+        }
+
+        private static void ForcePresenterRefresh(BattleSceneController controller)
+        {
+            var field = typeof(BattleSceneController).GetField(
+                "presenter",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            var presenter = (BattleUiPresenter)field.GetValue(controller);
+            Assert.That(presenter, Is.Not.Null);
+            presenter.Execute(null);
+        }
+
+        private static IEnumerator MoveNear(WorldExplorationController controller, Vector2 target)
+        {
+            for (var index = 0; index < 240; index++)
+            {
+                var offset = target - controller.PlayerPosition;
+                if (offset.magnitude <= 0.55f)
+                    break;
+                controller.Joystick.SetValue(offset.normalized);
+                yield return null;
+            }
+
+            controller.Joystick.SetValue(Vector2.zero);
+            yield return null;
+            Assert.That(Vector2.Distance(controller.PlayerPosition, target), Is.LessThan(0.7f));
+        }
+
+        private static WorldInteractableDefinition FindAreaExit(string sourceAreaId, string targetAreaId)
+        {
+            var catalog = Resources.Load<ContentCatalog>("ContentCatalog");
+            Assert.That(catalog, Is.Not.Null);
+            return catalog.All
+                .OfType<WorldAreaDefinition>()
+                .Single(area => area.Id == sourceAreaId)
+                .Interactables
+                .Single(value =>
+                    value.Kind == WorldInteractableKind.AreaExit &&
+                    value.TargetId == targetAreaId);
+        }
+
+        private sealed class RecordingPresentationService : IPresentationService
+        {
+            private readonly IPresentationService inner;
+
+            public RecordingPresentationService(IPresentationService inner)
+            {
+                this.inner = inner;
+            }
+
+            public bool IsAvailable => inner.IsAvailable;
+            public List<string> MusicCalls { get; } = new();
+            public List<string> SfxCalls { get; } = new();
+            public int StopMusicCount { get; private set; }
+            public VisualClip GetVisualClip(string clipId) => inner.GetVisualClip(clipId);
+            public Sprite GetSprite(string spriteId) => inner.GetSprite(spriteId);
+            public AudioCue GetAudioCue(string cueId) => inner.GetAudioCue(cueId);
+            public string GetAreaMusicCueId(string areaId) => inner.GetAreaMusicCueId(areaId);
+            public string GetCharacterVisualPrefix(string definitionId) =>
+                inner.GetCharacterVisualPrefix(definitionId);
+            public Sprite GetNpcPortrait(string npcId) => inner.GetNpcPortrait(npcId);
+            public Sprite GetItemIcon(string itemDefinitionId, string slotId) =>
+                inner.GetItemIcon(itemDefinitionId, slotId);
+            public Sprite GetUiSprite(string partId) => inner.GetUiSprite(partId);
+            public void PlayMusic(string cueId)
+            {
+                MusicCalls.Add(cueId);
+                inner.PlayMusic(cueId);
+            }
+
+            public void PlaySfx(string cueId)
+            {
+                SfxCalls.Add(cueId);
+                inner.PlaySfx(cueId);
+            }
+
+            public void StopMusic()
+            {
+                StopMusicCount++;
+                inner.StopMusic();
+            }
         }
     }
 }

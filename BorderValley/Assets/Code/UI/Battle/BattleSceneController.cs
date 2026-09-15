@@ -27,6 +27,7 @@ namespace BorderValley.UI.Battle
         private Coroutine enemyTurnRoutine;
         private bool enemyTurnLoopActive;
         private bool continueHandled;
+        private bool finishAudioPlayed;
         private long observedStateVersion = -1;
 
         public int RenderedCellCount => gridView == null ? 0 : gridView.CellCount;
@@ -65,6 +66,7 @@ namespace BorderValley.UI.Battle
                 RandomSourceFactory.FromSeed(seed));
             presentation = ResolvePresentation();
             presentationTracker = new BattlePresentationTracker();
+            presentation.PlayMusic("bgm.battle");
 
             var root = new GameObject(
                 "BattleCanvas",
@@ -124,6 +126,7 @@ namespace BorderValley.UI.Battle
                 return;
 
             continueHandled = true;
+            presentation.StopMusic();
             var unitStates = presenter.Engine.State.Units
                 .Where(unit => unit.Team == Team.Player)
                 .Select(unit => new BattleUnitResult(unit.Id, unit.DefinitionId, unit.Health, unit.Mana))
@@ -166,10 +169,39 @@ namespace BorderValley.UI.Battle
                 hudView.Render(presenter);
 
                 foreach (var presentationEvent in events)
+                {
                     gridView.PlayEvent(presentationEvent, presentation);
+                    PlayEventSfx(presentationEvent.Kind);
+                }
+            }
+
+            if (presenter.IsFinished && !finishAudioPlayed)
+            {
+                finishAudioPlayed = true;
+                presentation.StopMusic();
+                if (presenter.Outcome == BattleOutcome.PlayerVictory)
+                    presentation.PlayMusic("bgm.victory");
+                else
+                    presentation.PlaySfx("sfx.ui.error");
             }
 
             TryStartEnemyTurns();
+        }
+
+        private void PlayEventSfx(BattlePresentationEventKind kind)
+        {
+            switch (kind)
+            {
+                case BattlePresentationEventKind.Attack:
+                    presentation.PlaySfx("sfx.battle.attack");
+                    break;
+                case BattlePresentationEventKind.Hit:
+                    presentation.PlaySfx("sfx.battle.hit");
+                    break;
+                case BattlePresentationEventKind.Down:
+                    presentation.PlaySfx("sfx.battle.down");
+                    break;
+            }
         }
 
         private static IPresentationService ResolvePresentation()

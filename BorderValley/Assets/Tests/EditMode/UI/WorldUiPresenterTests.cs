@@ -304,8 +304,10 @@ namespace BorderValley.UI.World.Tests
                     typeof(InventoryService),
                     typeof(EconomyService),
                     typeof(NarrativeStateService),
-                    typeof(IShopPanelView)
+                    typeof(IShopPanelView),
+                    typeof(BorderValley.Presentation.IPresentationService)
                 }));
+            Assert.That(constructors[0].GetParameters()[5].IsOptional, Is.True);
         }
 
         [Test]
