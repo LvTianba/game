@@ -345,6 +345,78 @@ namespace BorderValley.Core.Tests
             Assert.That(participant.CurrentScene, Is.EqualTo("World"));
         }
 
+        [TestCase(".previous")]
+        [TestCase(".bak.previous")]
+        public void Save_WhenOnlyRecoverySnapshotExists_AndPreCommitFails_PreservesRecovery(
+            string recoverySuffix)
+        {
+            var participant = new FakeParticipant { Value = 7 };
+            var service = new SaveService(root, new[] { participant });
+            service.Save(0, "Recovery");
+            var primary = service.GetPrimaryPathForTests(0);
+            File.Move(primary, primary + recoverySuffix);
+
+            participant.Value = 8;
+            participant.CaptureException = new IOException("forced capture failure");
+
+            Assert.Throws<IOException>(() => service.Save(0, "FailedSave"));
+            Assert.That(service.HasSave(0), Is.True);
+
+            participant.CaptureException = null;
+            participant.Reset();
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(7));
+            Assert.That(participant.CurrentScene, Is.EqualTo("Recovery"));
+        }
+
+        [Test]
+        public void Save_WhenPreviousDeleteAndQuarantineFail_PreservesRecovery()
+        {
+            var participant = new FakeParticipant { Value = 1 };
+            var setup = new SaveService(root, new[] { participant });
+            setup.Save(0, "First");
+            participant.Value = 2;
+            setup.Save(0, "Second");
+
+            var primary = setup.GetPrimaryPathForTests(0);
+            var backup = primary + ".bak";
+            var previousPrimary = primary + ".previous";
+            File.Copy(backup, previousPrimary, true);
+            var primaryBefore = File.ReadAllBytes(primary);
+            var backupBefore = File.ReadAllBytes(backup);
+            var previousBefore = File.ReadAllBytes(previousPrimary);
+            var backupMoved = false;
+            var operations = new FaultInjectingSaveCommitOperations
+            {
+                ReplaceFault = (_, _, _) => new UnauthorizedAccessException("forced File.Replace failure"),
+                DeleteFault = path => string.Equals(path, previousPrimary, StringComparison.Ordinal)
+                    ? new IOException("forced delete failure")
+                    : null,
+                MoveFault = (source, _, _) =>
+                {
+                    if (string.Equals(source, previousPrimary, StringComparison.Ordinal))
+                        return new IOException("forced quarantine failure");
+                    if (string.Equals(source, backup, StringComparison.Ordinal))
+                        backupMoved = true;
+                    return null;
+                }
+            };
+
+            participant.Value = 3;
+            var service = new SaveService(root, new[] { participant }, operations);
+            Assert.Throws<IOException>(() => service.Save(0, "Third"));
+            Assert.That(backupMoved, Is.False);
+            CollectionAssert.AreEqual(primaryBefore, File.ReadAllBytes(primary));
+            CollectionAssert.AreEqual(backupBefore, File.ReadAllBytes(backup));
+            CollectionAssert.AreEqual(previousBefore, File.ReadAllBytes(previousPrimary));
+
+            participant.Reset();
+            Assert.That(service.HasSave(0), Is.True);
+            Assert.That(service.Load(0), Is.True);
+            Assert.That(participant.Value, Is.EqualTo(2));
+            Assert.That(participant.CurrentScene, Is.EqualTo("Second"));
+        }
+
         [Test]
         public void Save_WhenPrimaryIsLocked_ThrowsAndPreservesSave()
         {
@@ -516,8 +588,14 @@ namespace BorderValley.Core.Tests
             public string Key => ParticipantKey;
             public int Value { get; set; }
             public int RejectValue { get; set; } = int.MinValue;
+            public Exception CaptureException { get; set; }
             public string CurrentScene { get; private set; } = string.Empty;
-            public JObject Capture() => new JObject { ["value"] = Value };
+            public JObject Capture()
+            {
+                if (CaptureException != null)
+                    throw CaptureException;
+                return new JObject { ["value"] = Value };
+            }
             public void Restore(JObject state)
             {
                 Value = state.Value<int>("value");

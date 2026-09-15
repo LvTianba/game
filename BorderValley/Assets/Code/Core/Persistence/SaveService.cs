@@ -124,7 +124,6 @@ namespace BorderValley.Core.Persistence
             var temporary = primary + ".tmp";
             var backup = primary + ".bak";
 
-            CleanupPreviousSnapshots(primary, backup);
             TryDeleteFile(temporary);
 
             try
@@ -446,11 +445,16 @@ namespace BorderValley.Core.Persistence
             var previousBackupMoved = false;
             var backupUpdated = false;
             var primaryMoved = false;
+            string preservedPreviousBackup = null;
+            string preservedPreviousPrimary = null;
 
             TryDeleteFile(backupTemporary);
 
             try
             {
+                preservedPreviousBackup = PreservePreviousSnapshot(previousBackup);
+                preservedPreviousPrimary = PreservePreviousSnapshot(previousPrimary);
+
                 commitOperations.Copy(primary, backupTemporary, false);
                 var backupState = InspectSaveFile(backupTemporary, out var backupReadException);
                 if (backupState != SaveFileState.Valid)
@@ -475,6 +479,8 @@ namespace BorderValley.Core.Persistence
 
                 TryDeleteFile(previousBackup);
                 TryDeleteFile(previousPrimary);
+                CleanupPreservedSnapshot(preservedPreviousBackup);
+                CleanupPreservedSnapshot(preservedPreviousPrimary);
             }
             catch
             {
@@ -489,6 +495,9 @@ namespace BorderValley.Core.Persistence
                 }
                 else if (previousBackupMoved)
                     TryMove(previousBackup, backup);
+
+                RestorePreservedSnapshot(preservedPreviousPrimary, previousPrimary);
+                RestorePreservedSnapshot(preservedPreviousBackup, previousBackup);
                 throw;
             }
             finally
@@ -506,6 +515,41 @@ namespace BorderValley.Core.Persistence
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+
+        private string PreservePreviousSnapshot(string path)
+        {
+            if (!File.Exists(path))
+                return null;
+
+            var preserved = path + ".preserve." + Guid.NewGuid().ToString("N");
+            try
+            {
+                commitOperations.Move(path, preserved, false);
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException)
+            {
+                throw new IOException("Failed to preserve recovery snapshot.", exception);
+            }
+
+            return preserved;
+        }
+
+        private void RestorePreservedSnapshot(string preserved, string original)
+        {
+            if (string.IsNullOrWhiteSpace(preserved) || !File.Exists(preserved))
+                return;
+
+            TryDeleteFile(original);
+            TryMove(preserved, original);
+        }
+
+        private void CleanupPreservedSnapshot(string preserved)
+        {
+            if (!string.IsNullOrWhiteSpace(preserved))
+                CleanupPreviousSnapshot(preserved);
         }
 
         private void ReplaceInvalidPrimary(string temporary, string primary)
